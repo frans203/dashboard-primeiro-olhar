@@ -1,0 +1,25 @@
+# Dados pessoais — não versionar (nomes, endereços e saúde de crianças)
+backend/data/*.tsv
+backend/data/*.csv
+backend/data/*.xlsx
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+*.tsbuildinfo
+
+# Editores / SO
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

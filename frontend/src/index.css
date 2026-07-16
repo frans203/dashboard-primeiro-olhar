@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Instituto Primeiro Olhar — visual identity.
+  Pastel blue & yellow, modern, warm and friendly (institute for children with
+  Down syndrome). shadcn semantic tokens are mapped to the brand palette below.
+*/
+
+@layer base {
+  :root {
+    --background: 210 40% 99%;
+    --foreground: 217 33% 20%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 217 33% 20%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 217 33% 20%;
+
+    /* primary = pastel blue */
+    --primary: 211 80% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    /* secondary = pastel yellow */
+    --secondary: 45 95% 88%;
+    --secondary-foreground: 30 45% 28%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 45 95% 92%;
+    --accent-foreground: 30 45% 28%;
+
+    --destructive: 0 72% 58%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 211 80% 60%;
+
+    --radius: 0.85rem;
+
+    /* raw brand tokens (for charts / accents) */
+    --brand-blue: 211 80% 60%;
+    --brand-blue-soft: 211 85% 90%;
+    --brand-yellow: 45 95% 62%;
+    --brand-yellow-soft: 45 95% 88%;
+  }
+
+  .dark {
+    --background: 217 33% 12%;
+    --foreground: 210 40% 96%;
+
+    --card: 217 33% 16%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 217 33% 16%;
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 211 80% 62%;
+    --primary-foreground: 217 33% 12%;
+
+    --secondary: 45 60% 45%;
+    --secondary-foreground: 217 33% 12%;
+
+    --muted: 217 33% 22%;
+    --muted-foreground: 215 20% 70%;
+
+    --accent: 217 33% 24%;
+    --accent-foreground: 210 40% 96%;
+
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 210 40% 96%;
+
+    --border: 217 33% 26%;
+    --input: 217 33% 26%;
+    --ring: 211 80% 62%;
+
+    --brand-blue: 211 80% 62%;
+    --brand-blue-soft: 211 40% 30%;
+    --brand-yellow: 45 90% 60%;
+    --brand-yellow-soft: 45 40% 30%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
