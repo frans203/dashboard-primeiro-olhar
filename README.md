@@ -15,16 +15,28 @@ O projeto é dividido em duas partes independentes:
 Cada pasta tem um `CLAUDE.md` com a arquitetura detalhada, o mapa de módulos e as
 convenções a seguir ao adicionar uma rota ou um gráfico.
 
-## Dados
+## Dados — leia antes de rodar
 
 A API é alimentada por um único arquivo TSV — o formulário de cadastro das famílias
 (355 linhas × 40 colunas) — lido em memória no startup. **Não há banco de dados nem
 upload de arquivos.**
 
-> **O arquivo de dados não está versionado.** Ele contém dados pessoais identificáveis
-> de crianças (nome, data de nascimento, endereço, histórico de saúde, renda familiar)
-> e por isso está no `.gitignore`. Para rodar o projeto localmente, coloque o arquivo em
-> `backend/data/Formulario2_Resumido.tsv`.
+**O arquivo não está no repositório e você precisa colocá-lo manualmente**, neste
+caminho exato:
+
+```
+backend/data/Formulario2_Resumido.tsv
+```
+
+A pasta e o nome do arquivo são fixos (`backend/cleaning.py` → `TSV_PATH`) — renomear
+não funciona. O formato é **TSV** (separado por tabulação), não CSV por vírgula. Se o
+arquivo não estiver lá, o backend **não sobe**: o `main.py` carrega os dados no startup
+e você verá um `FileNotFoundError` apontando para esse caminho.
+
+Peça o arquivo a quem já trabalha no projeto — ele não é versionado porque contém dados
+pessoais identificáveis das crianças (nome, data de nascimento, endereço, histórico de
+saúde e renda familiar) e o repositório é público. Não commite o arquivo: ele está no
+`.gitignore` justamente para isso.
 
 ## Como rodar
 
@@ -32,6 +44,9 @@ Os dois serviços sobem separados. O backend precisa estar no ar para o frontend
 mostrar dados reais.
 
 ### Backend — http://localhost:8000
+
+Confira antes que o TSV esteja em `backend/data/Formulario2_Resumido.tsv` (veja
+[Dados](#dados--leia-antes-de-rodar)) — sem ele o serviço não inicia.
 
 ```bash
 cd backend
