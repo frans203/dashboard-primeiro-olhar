@@ -1,11 +1,44 @@
 /**
- * Zod schemas — validate every API response at the boundary (when it enters the
- * TanStack Query cache) and infer the TypeScript response types from a single source.
+ * Zod schemas — the boundary in both directions:
+ *  - every API RESPONSE is validated on its way INTO the Query cache, and the response
+ *    TypeScript types are inferred from these schemas (single source of truth);
+ *  - every FILTERS object is validated before it becomes a query string.
  *
  * These mirror `backend/dtos.py`. Distribution endpoints use the uniform
  * `{ label, count }` item shape (`labelCount`).
  */
 import { z } from "zod";
+
+import {
+  BENEFIT_VALUES,
+  DELIVERY_TYPE_VALUES,
+  PARENT_EDUCATION_VALUES,
+  SEX_VALUES,
+  type Filters,
+} from "@/types/filters";
+
+// --- filters (outbound) --------------------------------------------------- //
+
+/**
+ * Validates the filters of a chart before they are serialized into a query string.
+ * Every filter is optional; the enums are the same `const` arrays that produce the TS
+ * unions in `types/filters.ts`. Ages/incomes must be non-negative integers (incomes are
+ * in reais). Unknown keys are stripped so a chart can never smuggle a param its route
+ * does not accept.
+ */
+export const filtersSchema = z.object({
+  city: z.string().trim().min(1).optional(),
+  ageMin: z.number().int().nonnegative().optional(),
+  ageMax: z.number().int().nonnegative().optional(),
+  incomeMin: z.number().int().nonnegative().optional(),
+  incomeMax: z.number().int().nonnegative().optional(),
+  therapy: z.string().min(1).optional(),
+  parentEducation: z.enum(PARENT_EDUCATION_VALUES).optional(),
+  benefit: z.enum(BENEFIT_VALUES).optional(),
+  sex: z.enum(SEX_VALUES).optional(),
+  deliveryType: z.enum(DELIVERY_TYPE_VALUES).optional(),
+  nicu: z.boolean().optional(),
+}) satisfies z.ZodType<Partial<Filters>, z.ZodTypeDef, unknown>;
 
 export const keyLabel = z.object({
   key: z.string(),

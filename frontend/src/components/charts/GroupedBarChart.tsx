@@ -44,11 +44,17 @@ export function GroupedBarChart<T extends Record<string, unknown>>({
         <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
         {/* Recharts 3 has very strict dataKey generics; the runtime accepts a
             string key, so we cast to keep the generic wrapper ergonomic. */}
+        {/* Category labels here are long ("Superior incompleto"); tilt them and give
+            the axis room so they don't overlap when the card is narrow (mobile).
+            Trade-off: on a very narrow card the leftmost tilted label can clip at the
+            edge — accepted over wrapping, which re-introduced overlap. */}
         <XAxis
           dataKey={categoryKey as unknown as never}
-          tick={{ fontSize: 12 }}
+          tick={{ fontSize: 11 }}
           interval={0}
-          height={48}
+          angle={-30}
+          textAnchor="end"
+          height={72}
         />
         <YAxis allowDecimals={false} tick={{ fontSize: 12 }} width={32} />
         <Tooltip cursor={{ fill: "hsl(var(--muted))" }} />

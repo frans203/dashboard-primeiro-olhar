@@ -1,17 +1,19 @@
-import { ExampleSexChart } from "@/components/charts/ExampleSexChart";
-import { TodoPanel } from "@/components/charts/TodoPanel";
-import { IndicatorsRow } from "@/components/IndicatorsRow";
+import { AgeChart } from "@/components/charts/demographics/AgeChart";
+import { CitiesChart } from "@/components/charts/demographics/CitiesChart";
+import { MaternitiesChart } from "@/components/charts/demographics/MaternitiesChart";
+import { SexChart } from "@/components/charts/demographics/SexChart";
+import { IndicatorsRow, type IndicatorKey } from "@/components/IndicatorsRow";
 import { PageHeader } from "./PageHeader";
 
 /**
- * Demografia.
- * Charts: faixa etária (Bar vertical) · sexo (Pie) · ranking cidades (Bar horizontal)
- *         · ranking maternidades (Bar horizontal).
+ * Demografia — faixa etária (Bar vertical) · sexo (Pie) · ranking de cidades
+ * (Bar horizontal) · ranking de maternidades (Bar horizontal). Route: /api/demographics.
  *
- * The sex Pie is the LIVE example (ExampleSexChart, the molde). The others are TODO —
- * copy ExampleSexChart, swap the query hook + generic chart, and pick the pertinent
- * filters (a chart never filters by its own axis).
+ * Every chart owns its filters, so the grid is just composition: one column on mobile,
+ * two from `lg`.
  */
+const CARDS: readonly IndicatorKey[] = ["totalChildren"];
+
 export function DemographicsPage() {
   return (
     <div className="space-y-6">
@@ -19,16 +21,13 @@ export function DemographicsPage() {
         title="Demografia"
         description="Perfil das crianças: idade, sexo, cidades e maternidades."
       />
-      <IndicatorsRow />
+      <IndicatorsRow cards={CARDS} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* Example, end-to-end (molde) */}
-        <ExampleSexChart />
-
-        {/* TODO: copy ExampleSexChart for each of these */}
-        <TodoPanel title="Faixa etária" chartType="Bar vertical" />
-        <TodoPanel title="Ranking de cidades" chartType="Bar horizontal" />
-        <TodoPanel title="Ranking de maternidades" chartType="Bar horizontal" />
+        <AgeChart />
+        <SexChart />
+        <CitiesChart />
+        <MaternitiesChart />
       </div>
     </div>
   );

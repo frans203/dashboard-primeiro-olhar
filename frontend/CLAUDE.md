@@ -3,6 +3,15 @@
 React + Vite + TypeScript dashboard that consumes the FastAPI backend and renders
 **charts, tables and indicator cards with per-chart filters**. Mobile-first, responsive.
 
+> ## ⚠️ MOCK DE DEMONSTRAÇÃO LIGADO
+>
+> O app está servindo **dados fictícios** (`src/api/mock/`), não os do Instituto — foi
+> ligado para gravar um vídeo sem depender do backend, que ainda responde 501 em quase
+> tudo. As respostas falsas passam pelo mesmo Zod das reais.
+>
+> **Desligar:** `USE_MOCK_API = false` em `src/api/mock/index.ts`.
+> **Remover:** apague `src/api/mock/` + o bloco "MOCK DE DEMONSTRAÇÃO" em `api/client.ts`.
+
 ## Run
 
 ```bash
@@ -13,7 +22,8 @@ npm run lint       # tsc --noEmit
 ```
 
 The backend must be running for live data. In dev, Vite proxies `/api` to `:8000`
-(see `vite.config.ts`); for other origins set `VITE_API_BASE_URL`.
+(see `vite.config.ts`); for other origins set `VITE_API_URL` (`VITE_API_BASE_URL` is
+still honoured as an alias).
 
 ## Stack
 
@@ -30,11 +40,23 @@ Three responsibilities, three homes:
 - **Zustand = per-chart filters.** Each chart instance owns a filter store.
 - **Zod = the boundary.** Responses are validated on the way INTO the cache
   (`api/client.ts` → `getJson` + schemas in `api/schemas.ts`); filters are validated
-  before becoming a query string.
+  before becoming a query string (`filtersSchema`, same file).
 
 **Filters compose the query key.** A chart's filters object is passed straight into the
 TanStack Query key (`api/endpoints.ts` → `queryKeys`). Change a filter → new key →
 automatic refetch + per-combination caching. Do not manually refetch.
+
+**One route, one pertinent subset.** `ROUTE_FILTERS` (`api/endpoints.ts`) mirrors the
+query DTOs in `backend/dtos.py` — exactly what each route accepts. `pickRouteFilters`
+narrows a chart's filters to that subset and the SAME narrowed object builds the key and
+the request, so charts sharing a route also share cache entries. Anything else would be
+silently ignored by the API (a control that looks active but does nothing), so it is
+dropped instead of sent. When a brief asks for a filter its route has no param for, the
+DTO wins — see `DeliveryTypeChart` (no `parentEducation`).
+
+**Enums live once.** The `const` arrays in `types/filters.ts` produce the TS unions, the
+Zod enums, and the pt-BR dropdown options (`lib/filter-options.ts`). Add a value there
+and a missing label becomes a type error rather than an absent option.
 
 ### Per-instance chart state (factory + Context + hook — no prop drilling)
 
@@ -45,7 +67,14 @@ automatic refetch + per-combination caching. Do not manually refetch.
   write it. Two instances of the same chart therefore have independent filters.
 - **Exception — shared reference data:** the therapy list (`/api/filters/therapies`) is
   **server state**, so it lives in the Query cache and is read via `hooks/useTherapies.ts`
-  by anyone. It is NOT a per-chart store.
+  by anyone. It is NOT a per-chart store. The city options (`hooks/useCities.ts`) work the
+  same way, but there is no cities route: they are derived from the UNFILTERED
+  `/api/demographics` ranking (same cache entry the cities chart already uses, so no extra
+  request), minus the "Outras" bucket — an aggregate, and `city` is validated strictly by
+  the API. Only the top 10 are therefore selectable; a real `/api/filters/cities` route
+  would lift that.
+- **The KPI row is an instance too.** `components/IndicatorsRow.tsx` owns a store and a
+  filter bar like any chart, and each page passes the `cards` its brief calls for.
 
 ## `ui-kit` layer (always compose from it)
 
@@ -67,13 +96,36 @@ generic, reused chart primitives (`BarChart`, `HorizontalBarChart`, `PieChart`,
 `GroupedBarChart`) plus `ChartState` (loading/error/empty). **No hexagonal or line
 charts** (project decision).
 
+Two more shared pieces sit on top of them, and a chart should never re-do their work:
+- **`ChartFilterBar`** — declarative filter controls (`fields`) bound to the instance's
+  store, plus "limpar filtros". `age`/`income` render the min/max pairs the API expects.
+- **`ChartCard`** — title + collapsible filter bar (badged with the active-filter count)
+  + `ChartState`. Charts stay tiny: fetch a series, render it.
+
+`lib/format.ts` owns pt-BR display rules. **Rates from the API are shares (0–1)** — see
+`analytics.py` — so `formatRate` percent-formats them; a missing average renders `EMPTY`
+("—") and never `0`.
+
+The concrete chart instances live in per-page folders: `charts/demographics`,
+`charts/health`, `charts/socioeconomic`, `charts/crossings`.
+
 ## Visual identity & layout
 
 - **Name:** Instituto Primeiro Olhar Dashboard. **Logo:** eye icon (`Eye`).
 - **Palette:** pastel blue & yellow (institute for children with Down syndrome) —
   warm, modern, friendly. Tokens are CSS variables in `src/index.css`, wired into
-  Tailwind (`tailwind.config.js`) as shadcn semantic tokens + `brand.*`. Chart palette
-  in `lib/chart-colors.ts` (use it so all charts read as one system).
+  Tailwind (`tailwind.config.js`) as shadcn semantic tokens + `brand.*`.
+- **Chart palette:** `lib/chart-colors.ts` — 8 hues, brand blue & yellow first, so a
+  many-slice/many-bar chart stays distinct instead of cycling two colors. The slot ORDER
+  is colorblind-safety, not taste: derived by the `dataviz` skill and validated on the
+  white card surface (CVD adjacent ΔE 9.2, normal-vision 15.6). Bar charts default to
+  categorical (`monochrome={false}`); pass `monochrome` for a single-hue chart. **Change
+  a hex or the order → re-run the skill's validator, don't eyeball.** Steps are tuned for
+  the light surface (the app renders light-only).
+- **Decorative background:** `.app-bg` in `index.css` — two very faint drifting blue &
+  yellow blobs behind everything (`AppShell` renders the element; the body keeps
+  `bg-background`, cards are opaque, so the wash only shows in the gaps). Cosmetic only:
+  `aria-hidden`, `pointer-events: none`, and motion off under `prefers-reduced-motion`.
 - **Mobile-first & responsive:** single-column grids on mobile → multi-column on
   desktop; cards stack; charts always in `ResponsiveContainer`; ~44px touch targets;
   no horizontal page scroll (wide tables scroll inside their own container).
@@ -86,20 +138,28 @@ charts** (project decision).
 
 ## Adding a new chart (use the molde)
 
-The one fully wired chart is `components/charts/ExampleSexChart.tsx` — the **template**.
-To add a chart:
+`components/charts/demographics/SexChart.tsx` is the **template** — the smallest complete
+example, documented inline. To add a chart:
 
-1. **Copy `ExampleSexChart`.** It already wires: `ChartFilterProvider` → store →
-   `useChartFilters`/`useChartFilterActions` → a query hook → a generic chart in
-   `ChartState`.
-2. **Swap the query hook.** Implement the matching hook in `hooks/queries.ts` (they are
-   `// TODO` stubs following `useDemographicsQuery`), and complete its fetcher in
-   `api/endpoints.ts` (uncomment the `getJson(...)` line + Zod schema).
-3. **Swap the generic chart** for the right one (`BarChart`, `HorizontalBarChart`,
-   `PieChart`, `GroupedBarChart`).
-4. **Pick pertinent filters only**, and **never filter by the chart's own axis**
-   (e.g. the sex chart does not offer a `sex` filter).
-5. Drop it into the page, replacing the corresponding `TodoPanel`.
+1. **Copy `SexChart`.** It wires `ChartFilterProvider` → store → `useChartFilters` → a
+   query hook → a generic chart inside `ChartCard`.
+2. **Swap the query hook** (`hooks/queries.ts`; each is ~5 lines around
+   `pickRouteFilters` + `useQuery`) and, for a new route, add its fetcher + Zod schema.
+3. **Swap the generic chart** (`BarChart`, `HorizontalBarChart`, `PieChart`,
+   `GroupedBarChart`).
+4. **List the pertinent `FIELDS`, minus the chart's own axis** — the sex chart offers no
+   `sex` filter; on the crossings pages, neither axis is offered (the filters cut the
+   population, never the relation being read).
+5. Drop it into its page.
 
-Filter controls are ui-kit `SelectFilterField` / `NumberFilterField`, bound to the
-store via `useChartFilterActions().setFilter`.
+Pass the query's **`isPending`** (not `isLoading`) to `ChartCard`: between retry attempts
+`isLoading` drops to false while the query is still pending, which flashes the empty state
+before the error.
+
+### Known gaps against the brief
+
+- **Apgar histogram** (`charts/health/ApgarChart.tsx`): the brief asks for a histogram by
+  score bracket; `NeonatalResponse` exposes only the two averages, so the chart plots
+  those. A real histogram needs a backend field (e.g. `apgarDistribution: {label,count}[]`).
+- **NICU** (`charts/health/NicuChart.tsx`): `/api/neonatal` returns `nicuRate` (a share),
+  not a distribution, so the two slices are derived from it and read as percentages.

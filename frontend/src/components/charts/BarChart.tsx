@@ -19,11 +19,28 @@ import type { LabelCount } from "@/api/schemas";
  */
 export interface BarChartProps {
   data: LabelCount[];
-  /** Use a single brand color for all bars instead of the categorical palette. */
+  /**
+   * Use a single brand color for all bars instead of the categorical palette. Default
+   * is categorical: past two bars the palette keeps each bar visually distinct (blue &
+   * yellow first, then the rest), which is what the dashboard wants for its distribution
+   * charts.
+   */
   monochrome?: boolean;
+  /** Allow fractional Y ticks — for series of averages or rates, not head counts. */
+  allowDecimals?: boolean;
+  /** Fixes the Y scale (e.g. `[0, 10]` for Apgar) instead of auto-scaling. */
+  yDomain?: [number, number];
+  /** Series label shown in the tooltip. Defaults to "Contagem"; e.g. "Média" for Apgar. */
+  valueName?: string;
 }
 
-export function BarChart({ data, monochrome = true }: BarChartProps) {
+export function BarChart({
+  data,
+  monochrome = false,
+  allowDecimals = false,
+  yDomain,
+  valueName = "Contagem",
+}: BarChartProps) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <RBarChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
@@ -36,9 +53,15 @@ export function BarChart({ data, monochrome = true }: BarChartProps) {
           textAnchor="end"
           height={56}
         />
-        <YAxis allowDecimals={false} tick={{ fontSize: 12 }} width={32} />
+        <YAxis
+          allowDecimals={allowDecimals}
+          domain={yDomain ?? ["auto", "auto"]}
+          tick={{ fontSize: 12 }}
+          width={32}
+        />
         <Tooltip cursor={{ fill: "hsl(var(--muted))" }} />
-        <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+        {/* `name` labels the series in the tooltip (else Recharts shows "count"). */}
+        <Bar dataKey="count" name={valueName} radius={[6, 6, 0, 0]}>
           {data.map((_, i) => (
             <Cell key={i} fill={monochrome ? chartColor(0) : chartColor(i)} />
           ))}

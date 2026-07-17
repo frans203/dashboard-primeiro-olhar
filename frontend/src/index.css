@@ -90,7 +90,79 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background font-sans text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/*
+  Decorative background — two very faint blue & yellow blobs that drift slowly behind
+  all content. Purely cosmetic (aria-hidden, pointer-events: none, fixed behind the app).
+  Kept low-contrast on purpose so it never competes with the real charts/text. Motion is
+  disabled under prefers-reduced-motion.
+*/
+@layer base {
+  .app-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -10;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .app-bg::before,
+  .app-bg::after {
+    content: "";
+    position: absolute;
+    width: 46rem;
+    height: 46rem;
+    border-radius: 9999px;
+    /* soft brand tints, very low alpha; blur makes them read as an ambient wash */
+    filter: blur(72px);
+    opacity: 0.55;
+    will-change: transform;
+  }
+  .app-bg::before {
+    top: -12rem;
+    left: -10rem;
+    background: radial-gradient(
+      closest-side,
+      hsl(var(--brand-blue) / 0.22),
+      transparent
+    );
+    animation: app-bg-drift-a 26s ease-in-out infinite alternate;
+  }
+  .app-bg::after {
+    bottom: -14rem;
+    right: -8rem;
+    background: radial-gradient(
+      closest-side,
+      hsl(var(--brand-yellow) / 0.2),
+      transparent
+    );
+    animation: app-bg-drift-b 32s ease-in-out infinite alternate;
+  }
+
+  @keyframes app-bg-drift-a {
+    from {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    to {
+      transform: translate3d(4rem, 3rem, 0) scale(1.12);
+    }
+  }
+  @keyframes app-bg-drift-b {
+    from {
+      transform: translate3d(0, 0, 0) scale(1.05);
+    }
+    to {
+      transform: translate3d(-5rem, -3rem, 0) scale(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .app-bg::before,
+    .app-bg::after {
+      animation: none;
+    }
   }
 }

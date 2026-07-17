@@ -37,6 +37,8 @@ export interface SelectFilterFieldProps {
   options: DropdownOption[];
   placeholder?: string;
   className?: string;
+  /** Disables the dropdown (e.g. its options failed to load). */
+  disabled?: boolean;
 }
 
 export function SelectFilterField({

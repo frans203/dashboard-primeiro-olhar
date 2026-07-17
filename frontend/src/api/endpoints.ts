@@ -3,13 +3,19 @@
  * Zod-validated GET). Filters are part of the key, so a filter change → new key →
  * automatic refetch/cache by TanStack Query.
  *
- * Only `/api/filters/therapies` is IMPLEMENTED (it's the only route ready on the
- * backend). The rest are stubs marked `// TODO` — fill them in when their backend
- * route lands, following the therapies example exactly.
+ * Two rules are enforced here, once, for every route:
+ *
+ * 1. **Only the pertinent params.** `ROUTE_FILTERS` mirrors the query DTOs in
+ *    `backend/dtos.py` — the exact filter subset each route accepts. `pickRouteFilters`
+ *    narrows a chart's filters to that subset, and the SAME narrowed object builds the
+ *    key and the query string, so two charts sharing a route also share cache entries.
+ *    A chart additionally never puts its own axis in its store (see the chart files).
+ * 2. **Filters are validated before serialization** (`toQuery` → `filtersSchema`), so a
+ *    bad value surfaces as a query error instead of a malformed request.
  */
 import { buildQuery, getJson } from "@/api/client";
 import * as S from "@/api/schemas";
-import type { Filters } from "@/types/filters";
+import type { FilterKey, Filters } from "@/types/filters";
 
 /** Central query-key registry (keeps keys consistent across hooks). */
 export const queryKeys = {
@@ -27,66 +33,146 @@ export const queryKeys = {
   indicators: (f: Partial<Filters>) => ["indicators", f] as const,
 };
 
-// --- IMPLEMENTED ---------------------------------------------------------- //
+/**
+ * The filter subset each route accepts — mirrors the query DTOs in `backend/dtos.py`.
+ * Sending anything else would be silently ignored by the API (a filter that looks
+ * active but does nothing), so it is dropped here instead.
+ */
+export const ROUTE_FILTERS = {
+  demographics: [
+    "city",
+    "ageMin",
+    "ageMax",
+    "incomeMin",
+    "incomeMax",
+    "parentEducation",
+    "benefit",
+    "sex",
+  ],
+  neonatal: [
+    "city",
+    "ageMin",
+    "ageMax",
+    "incomeMin",
+    "incomeMax",
+    "sex",
+    "deliveryType",
+    "nicu",
+  ],
+  diagnosis: ["city", "incomeMin", "incomeMax", "parentEducation", "benefit"],
+  health: ["city", "ageMin", "ageMax", "incomeMin", "incomeMax", "sex"],
+  therapies: [
+    "city",
+    "ageMin",
+    "ageMax",
+    "incomeMin",
+    "incomeMax",
+    "parentEducation",
+    "benefit",
+  ],
+  socioeconomic: [
+    "city",
+    "ageMin",
+    "ageMax",
+    "incomeMin",
+    "incomeMax",
+    "parentEducation",
+    "benefit",
+  ],
+  incomeTherapies: ["city", "ageMin", "ageMax", "parentEducation", "sex"],
+  deliveryComplications: ["city", "ageMin", "ageMax", "incomeMin", "incomeMax", "sex"],
+  bpcIncome: ["city", "ageMin", "ageMax", "parentEducation"],
+  indicators: [
+    "city",
+    "ageMin",
+    "ageMax",
+    "incomeMin",
+    "incomeMax",
+    "parentEducation",
+    "benefit",
+    "sex",
+  ],
+} as const satisfies Record<string, readonly FilterKey[]>;
+
+export type RouteName = keyof typeof ROUTE_FILTERS;
+
+/**
+ * Narrow a chart's filters to the ones its route accepts, dropping unset values.
+ * Used for BOTH the query key and the request, so they can never disagree.
+ */
+export function pickRouteFilters(
+  route: RouteName,
+  filters: Partial<Filters>,
+): Partial<Filters> {
+  const entries = ROUTE_FILTERS[route]
+    .filter((key) => filters[key] !== undefined && filters[key] !== "")
+    .map((key) => [key, filters[key]] as const);
+  // Iterating erases the key→value-type link that `Filters` encodes; `filtersSchema`
+  // re-checks it on the way out (`toQuery`).
+  return Object.fromEntries(entries) as Partial<Filters>;
+}
+
+/** Validate the filters, then serialize them into a query string. */
+function toQuery(filters: Partial<Filters>): string {
+  return buildQuery(S.filtersSchema.parse(filters));
+}
+
+// --- reference data -------------------------------------------------------- //
 
 export function fetchTherapiesFilter(): Promise<S.TherapiesFilterResponse> {
   return getJson("/api/filters/therapies", S.therapiesFilterResponse);
 }
 
-// --- TODO (backend routes not implemented yet) ---------------------------- //
-// Each stub shows the exact shape to follow. Uncomment/complete when ready.
+// --- aggregates ------------------------------------------------------------ //
 
 export function fetchDemographics(f: Partial<Filters>): Promise<S.DemographicsResponse> {
-  // TODO: return getJson(`/api/demographics${buildQuery(f)}`, S.demographicsResponse);
-  void buildQuery;
-  throw new Error("TODO: not implemented");
+  return getJson(`/api/demographics${toQuery(f)}`, S.demographicsResponse);
 }
 
 export function fetchNeonatal(f: Partial<Filters>): Promise<S.NeonatalResponse> {
-  // TODO: return getJson(`/api/neonatal${buildQuery(f)}`, S.neonatalResponse);
-  throw new Error("TODO: not implemented");
+  return getJson(`/api/neonatal${toQuery(f)}`, S.neonatalResponse);
 }
 
 export function fetchDiagnosis(f: Partial<Filters>): Promise<S.DiagnosisResponse> {
-  // TODO: return getJson(`/api/diagnosis${buildQuery(f)}`, S.diagnosisResponse);
-  throw new Error("TODO: not implemented");
+  return getJson(`/api/diagnosis${toQuery(f)}`, S.diagnosisResponse);
 }
 
 export function fetchHealth(f: Partial<Filters>): Promise<S.HealthResponse> {
-  // TODO: return getJson(`/api/health${buildQuery(f)}`, S.healthResponse);
-  throw new Error("TODO: not implemented");
+  return getJson(`/api/health${toQuery(f)}`, S.healthResponse);
 }
 
 export function fetchTherapies(f: Partial<Filters>): Promise<S.TherapiesResponse> {
-  // TODO: return getJson(`/api/therapies${buildQuery(f)}`, S.therapiesResponse);
-  throw new Error("TODO: not implemented");
+  return getJson(`/api/therapies${toQuery(f)}`, S.therapiesResponse);
 }
 
 export function fetchSocioeconomic(f: Partial<Filters>): Promise<S.SocioeconomicResponse> {
-  // TODO: return getJson(`/api/socioeconomic${buildQuery(f)}`, S.socioeconomicResponse);
-  throw new Error("TODO: not implemented");
+  return getJson(`/api/socioeconomic${toQuery(f)}`, S.socioeconomicResponse);
 }
+
+export function fetchIndicators(f: Partial<Filters>): Promise<S.IndicatorsResponse> {
+  return getJson(`/api/indicators${toQuery(f)}`, S.indicatorsResponse);
+}
+
+// --- crossings ------------------------------------------------------------- //
 
 export function fetchIncomeTherapies(
   f: Partial<Filters>,
 ): Promise<S.IncomeTherapiesResponse> {
-  // TODO: return getJson(`/api/crossings/income-therapies${buildQuery(f)}`, S.incomeTherapiesResponse);
-  throw new Error("TODO: not implemented");
+  return getJson(
+    `/api/crossings/income-therapies${toQuery(f)}`,
+    S.incomeTherapiesResponse,
+  );
 }
 
 export function fetchDeliveryComplications(
   f: Partial<Filters>,
 ): Promise<S.DeliveryComplicationsResponse> {
-  // TODO: return getJson(`/api/crossings/delivery-complications${buildQuery(f)}`, S.deliveryComplicationsResponse);
-  throw new Error("TODO: not implemented");
+  return getJson(
+    `/api/crossings/delivery-complications${toQuery(f)}`,
+    S.deliveryComplicationsResponse,
+  );
 }
 
 export function fetchBpcIncome(f: Partial<Filters>): Promise<S.BpcIncomeResponse> {
-  // TODO: return getJson(`/api/crossings/bpc-income${buildQuery(f)}`, S.bpcIncomeResponse);
-  throw new Error("TODO: not implemented");
-}
-
-export function fetchIndicators(f: Partial<Filters>): Promise<S.IndicatorsResponse> {
-  // TODO: return getJson(`/api/indicators${buildQuery(f)}`, S.indicatorsResponse);
-  throw new Error("TODO: not implemented");
+  return getJson(`/api/crossings/bpc-income${toQuery(f)}`, S.bpcIncomeResponse);
 }

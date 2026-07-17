@@ -18,12 +18,13 @@ import type { LabelCount } from "@/api/schemas";
  */
 export interface HorizontalBarChartProps {
   data: LabelCount[];
+  /** Single brand color instead of the categorical palette. Default is categorical. */
   monochrome?: boolean;
 }
 
 export function HorizontalBarChart({
   data,
-  monochrome = true,
+  monochrome = false,
 }: HorizontalBarChartProps) {
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -42,7 +43,8 @@ export function HorizontalBarChart({
           interval={0}
         />
         <Tooltip cursor={{ fill: "hsl(var(--muted))" }} />
-        <Bar dataKey="count" radius={[0, 6, 6, 0]}>
+        {/* `name` labels the series in the tooltip (else Recharts shows "count"). */}
+        <Bar dataKey="count" name="Contagem" radius={[0, 6, 6, 0]}>
           {data.map((_, i) => (
             <Cell key={i} fill={monochrome ? chartColor(0) : chartColor(i)} />
           ))}

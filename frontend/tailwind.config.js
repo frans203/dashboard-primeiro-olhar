@@ -52,6 +52,19 @@ export default {
           "yellow-soft": "hsl(var(--brand-yellow-soft))",
         },
       },
+      fontFamily: {
+        // Inter (self-hosted via @fontsource-variable/inter, imported in main.tsx),
+        // falling back to the system UI stack if the font ever fails to load.
+        sans: [
+          "Inter Variable",
+          "Inter",
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "Roboto",
+          "sans-serif",
+        ],
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",

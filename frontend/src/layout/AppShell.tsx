@@ -12,7 +12,11 @@ export function AppShell({ pages }: { pages: Record<PageKey, React.ReactNode> })
   const [active, setActive] = React.useState<PageKey>("demographics");
 
   return (
-    <div className="min-h-screen bg-background">
+    // No opaque background here: the body carries `bg-background`, and the decorative
+    // `.app-bg` blobs sit between it and the (transparent) content so they show through
+    // the gaps around the cards.
+    <div className="min-h-screen">
+      <div className="app-bg" aria-hidden="true" />
       <MobileNav active={active} onNavigate={setActive} />
       <DesktopSidebar active={active} onNavigate={setActive} />
       {/* content is inset by the collapsed sidebar width on desktop */}
