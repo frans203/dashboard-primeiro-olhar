@@ -11,7 +11,7 @@ axis being charted — the route decides what to pass in).
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional, cast
 
 import pandas as pd
 
@@ -93,38 +93,62 @@ def apply_filters(
     mask = pd.Series(True, index=data.index)
 
     if city is not None:
-        mask &= data["city"] == city
+        mask &= _col(data, "city") == city
     if ageMin is not None:
-        mask &= data["age"].notna() & (data["age"] >= ageMin)
+        age = _col(data, "age")
+        mask &= age.notna() & (age >= ageMin)
     if ageMax is not None:
-        mask &= data["age"].notna() & (data["age"] <= ageMax)
+        age = _col(data, "age")
+        mask &= age.notna() & (age <= ageMax)
     if incomeMin is not None:
         # keep rows whose bracket max is >= requested floor
-        mask &= data["income_max"].notna() & (data["income_max"] >= incomeMin)
+        income_max = _col(data, "income_max")
+        mask &= income_max.notna() & (income_max >= incomeMin)
     if incomeMax is not None:
-        mask &= data["income_min"].notna() & (data["income_min"] <= incomeMax)
+        income_min = _col(data, "income_min")
+        mask &= income_min.notna() & (income_min <= incomeMax)
     if therapy is not None:
-        mask &= data["therapies"].map(lambda ts: therapy in ts)
+        key = therapy
+        mask &= _col(data, "therapies").map(lambda ts: _list_contains(ts, key))
     if parentEducation is not None:
-        mask &= (data["mother_education"] == parentEducation) | (
-            data["father_education"] == parentEducation
+        mask &= (_col(data, "mother_education") == parentEducation) | (
+            _col(data, "father_education") == parentEducation
         )
     if benefit is not None:
         col = "bpc" if benefit == "bpc" else "government_aid"
-        mask &= data[col] == True  # noqa: E712
+        mask &= _col(data, col) == True  # noqa: E712
     if sex is not None:
-        mask &= data["sex"] == sex
+        mask &= _col(data, "sex") == sex
     if deliveryType is not None:
-        mask &= data["delivery_type"] == deliveryType
+        mask &= _col(data, "delivery_type") == deliveryType
     if nicu is not None:
-        mask &= data["nicu"] == nicu
+        mask &= _col(data, "nicu") == nicu
 
-    return data[mask]
+    return cast(pd.DataFrame, data.loc[mask])
 
 
 # --------------------------------------------------------------------------- #
 # Small shared helpers (IMPLEMENTED)
 # --------------------------------------------------------------------------- #
+
+
+def _col(df: pd.DataFrame, name: str) -> pd.Series:
+    """Typed column accessor — ``df[name]`` is ``Series | DataFrame`` under pandas stubs."""
+    return cast(pd.Series, df[name])
+
+
+def _list_contains(value: Any, item: str) -> bool:
+    """Safe ``item in value`` for Series cells that stubs type as ``Any | NAType``."""
+    return isinstance(value, list) and item in value
+
+
+def _count_at(counts: pd.Series, key: Any) -> int:
+    """Integer count for ``key`` in a value_counts Series (0 when absent).
+
+    Uses ``to_dict`` so boolean labels (``True``/``False``) are not treated as
+    boolean indexers by ``.loc`` / ``__getitem__``.
+    """
+    return int(counts.to_dict().get(key, 0))
 
 
 def mean_ignoring_missing(series: pd.Series) -> Optional[float]:
@@ -138,7 +162,7 @@ def mean_ignoring_missing(series: pd.Series) -> Optional[float]:
 
 def explode_counts(df: pd.DataFrame, column: str) -> pd.Series:
     """Explode a list-valued column and return value counts (descending)."""
-    return df[column].explode().dropna().value_counts()
+    return _col(df, column).explode().dropna().value_counts()
 
 
 def _label_counts(
@@ -153,8 +177,9 @@ def _label_counts(
     (skipping keys with zero count). Otherwise sort by count descending.
     """
     counts = series.dropna().value_counts()
+    present = set(counts.index)
     if ordered_keys is not None:
-        items = [(k, int(counts.get(k, 0))) for k in ordered_keys if k in counts.index]
+        items = [(k, _count_at(counts, k)) for k in ordered_keys if k in present]
     else:
         items = [(k, int(v)) for k, v in counts.items()]
     out: list[dict] = []
@@ -181,7 +206,7 @@ def _rate(numerator: int, denominator: int) -> float:
 
 
 def _has_therapy(df: pd.DataFrame) -> pd.Series:
-    return df["therapies"].map(lambda ts: isinstance(ts, list) and len(ts) > 0)
+    return _col(df, "therapies").map(lambda ts: isinstance(ts, list) and len(ts) > 0)
 
 
 def _age_bucket(age: float) -> Optional[str]:
@@ -208,20 +233,22 @@ def demographics(df: pd.DataFrame) -> dict:
     Returns a dict shaped like ``DemographicsResponse``.
     """
     age_labels = [b[0] for b in AGE_BUCKETS]
-    age_series = df["age"].map(_age_bucket)
-    age_counts = age_series.dropna().value_counts()
+    age_counts = _col(df, "age").map(_age_bucket).dropna().value_counts()
+    present = set(age_counts.index)
     age_distribution = [
-        {"label": label, "count": int(age_counts.get(label, 0))}
+        {"label": label, "count": _count_at(age_counts, label)}
         for label in age_labels
-        if label in age_counts.index
+        if label in present
     ]
 
     return {
         "ageDistribution": age_distribution,
-        "sexDistribution": _label_counts(df["sex"], label_map=SEX_LABELS),
-        "topCities": _top_n_label_counts(df["city"].dropna().value_counts(), TOP_N_CITIES),
+        "sexDistribution": _label_counts(_col(df, "sex"), label_map=SEX_LABELS),
+        "topCities": _top_n_label_counts(
+            _col(df, "city").dropna().value_counts(), TOP_N_CITIES
+        ),
         "topMaternities": _top_n_label_counts(
-            df["maternity"].dropna().value_counts(), TOP_N_MATERNITIES
+            _col(df, "maternity").dropna().value_counts(), TOP_N_MATERNITIES
         ),
     }
 
@@ -231,20 +258,20 @@ def neonatal(df: pd.DataFrame) -> dict:
 
     Returns a dict shaped like ``NeonatalResponse``.
     """
-    nicu_known = df["nicu"].dropna()
+    nicu_known = _col(df, "nicu").dropna()
     nicu_rate = _rate(int((nicu_known == True).sum()), len(nicu_known))  # noqa: E712
 
     return {
-        "apgar1minAvg": mean_ignoring_missing(df["apgar_1min"]),
-        "apgar5minAvg": mean_ignoring_missing(df["apgar_5min"]),
+        "apgar1minAvg": mean_ignoring_missing(_col(df, "apgar_1min")),
+        "apgar5minAvg": mean_ignoring_missing(_col(df, "apgar_5min")),
         "deliveryType": _label_counts(
-            df["delivery_type"],
+            _col(df, "delivery_type"),
             label_map=DELIVERY_LABELS,
             ordered_keys=["cesarean", "vaginal"],
         ),
         "nicuRate": nicu_rate,
         "complications": _label_counts(
-            df["neonatal_complication"],
+            _col(df, "neonatal_complication"),
             label_map=BOOL_LABELS,
             ordered_keys=[True, False],
         ),
@@ -254,7 +281,7 @@ def neonatal(df: pd.DataFrame) -> dict:
 def diagnosis(df: pd.DataFrame) -> dict:
     """Diagnosis moment distribution. Shaped like ``DiagnosisResponse``."""
     return {
-        "diagnosisMoment": _label_counts(df["diagnosis_moment"]),
+        "diagnosisMoment": _label_counts(_col(df, "diagnosis_moment")),
     }
 
 
@@ -265,7 +292,7 @@ def health(df: pd.DataFrame) -> dict:
             explode_counts(df, "diseases"), TOP_N_DISEASES
         ),
         "surgeryRate": _label_counts(
-            df["cardiac_surgery"],
+            _col(df, "cardiac_surgery"),
             label_map=BOOL_LABELS,
             ordered_keys=[True, False],
         ),
@@ -293,34 +320,37 @@ def socioeconomic(df: pd.DataFrame) -> dict:
     """
     # Income in bracket order (low → high).
     income_order = [b["label"] for b in INCOME_BRACKETS]
-    income_counts = df["income_label"].dropna().value_counts()
+    income_counts = _col(df, "income_label").dropna().value_counts()
+    income_present = set(income_counts.index)
     income_distribution = [
-        {"label": label, "count": int(income_counts[label])}
+        {"label": label, "count": _count_at(income_counts, label)}
         for label in income_order
-        if label in income_counts.index
+        if label in income_present
     ]
 
     family_structure = _label_counts(
-        df["mother_marital_status"],
+        _col(df, "mother_marital_status"),
         label_map=MARITAL_LABELS,
         ordered_keys=list(MARITAL_LABELS.keys()),
     )
 
     edu_keys = list(EDUCATION_LABELS.keys())
-    mother_counts = df["mother_education"].dropna().value_counts()
-    father_counts = df["father_education"].dropna().value_counts()
+    mother_counts = _col(df, "mother_education").dropna().value_counts()
+    father_counts = _col(df, "father_education").dropna().value_counts()
+    mother_present = set(mother_counts.index)
+    father_present = set(father_counts.index)
     parent_education = [
         {
             "label": EDUCATION_LABELS[key],
-            "mother": int(mother_counts.get(key, 0)),
-            "father": int(father_counts.get(key, 0)),
+            "mother": _count_at(mother_counts, key),
+            "father": _count_at(father_counts, key),
         }
         for key in edu_keys
-        if key in mother_counts.index or key in father_counts.index
+        if key in mother_present or key in father_present
     ]
 
     def _benefit_row(col: str, label: str) -> dict:
-        known = df[col].dropna()
+        known = _col(df, col).dropna()
         return {
             "label": label,
             "receives": int((known == True).sum()),  # noqa: E712
@@ -343,10 +373,11 @@ def socioeconomic(df: pd.DataFrame) -> dict:
 def crossing_income_therapies(df: pd.DataFrame) -> dict:
     """Income x therapy access. Shaped like ``IncomeTherapiesResponse``."""
     has = _has_therapy(df)
+    income_label = _col(df, "income_label")
     rows: list[dict] = []
     for bracket in INCOME_BRACKETS:
         label = bracket["label"]
-        subset = df["income_label"] == label
+        subset = income_label == label
         if not subset.any():
             continue
         with_t = int((subset & has).sum())
@@ -363,18 +394,20 @@ def crossing_income_therapies(df: pd.DataFrame) -> dict:
 
 def crossing_delivery_complications(df: pd.DataFrame) -> dict:
     """Delivery type x neonatal complications. Shaped like ``DeliveryComplicationsResponse``."""
+    delivery = _col(df, "delivery_type")
+    complication = _col(df, "neonatal_complication")
     rows: list[dict] = []
     for key, label in DELIVERY_LABELS.items():
-        subset = df["delivery_type"] == key
-        known = subset & df["neonatal_complication"].notna()
+        subset = delivery == key
+        known = subset & complication.notna()
         if not known.any():
             # still emit the delivery type if any rows exist for it
             if not subset.any():
                 continue
             with_c, without_c = 0, 0
         else:
-            with_c = int((known & (df["neonatal_complication"] == True)).sum())  # noqa: E712
-            without_c = int((known & (df["neonatal_complication"] == False)).sum())  # noqa: E712
+            with_c = int((known & (complication == True)).sum())  # noqa: E712
+            without_c = int((known & (complication == False)).sum())  # noqa: E712
         rows.append(
             {
                 "deliveryType": label,
@@ -387,15 +420,17 @@ def crossing_delivery_complications(df: pd.DataFrame) -> dict:
 
 def crossing_bpc_income(df: pd.DataFrame) -> dict:
     """BPC receipt x income. Shaped like ``BpcIncomeResponse``."""
+    income_label = _col(df, "income_label")
+    bpc = _col(df, "bpc")
     rows: list[dict] = []
     for bracket in INCOME_BRACKETS:
         label = bracket["label"]
-        subset = df["income_label"] == label
-        known = subset & df["bpc"].notna()
+        subset = income_label == label
+        known = subset & bpc.notna()
         if not subset.any():
             continue
-        receives = int((known & (df["bpc"] == True)).sum())  # noqa: E712
-        does_not = int((known & (df["bpc"] == False)).sum())  # noqa: E712
+        receives = int((known & (bpc == True)).sum())  # noqa: E712
+        does_not = int((known & (bpc == False)).sum())  # noqa: E712
         rows.append(
             {
                 "income": label,
@@ -409,13 +444,13 @@ def crossing_bpc_income(df: pd.DataFrame) -> dict:
 def indicators(df: pd.DataFrame) -> dict:
     """Top-of-page indicator cards. Shaped like ``IndicatorsResponse``."""
     has_therapy = _has_therapy(df)
-    surgery_known = df["cardiac_surgery"].dropna()
+    surgery_known = _col(df, "cardiac_surgery").dropna()
     surgery_rate = _rate(
         int((surgery_known == True).sum()), len(surgery_known)  # noqa: E712
     )
     return {
-        "apgar1minAvg": mean_ignoring_missing(df["apgar_1min"]),
-        "apgar5minAvg": mean_ignoring_missing(df["apgar_5min"]),
+        "apgar1minAvg": mean_ignoring_missing(_col(df, "apgar_1min")),
+        "apgar5minAvg": mean_ignoring_missing(_col(df, "apgar_5min")),
         "therapyRate": _rate(int(has_therapy.sum()), len(df)),
         "surgeryRate": surgery_rate,
         "totalChildren": int(len(df)),
