@@ -11,6 +11,8 @@ import {
   ALL_VALUE,
   BENEFIT_OPTIONS,
   DELIVERY_TYPE_OPTIONS,
+  INCOME_MAX_OPTIONS,
+  INCOME_MIN_OPTIONS,
   NICU_OPTIONS,
   PARENT_EDUCATION_OPTIONS,
   SEX_OPTIONS,
@@ -35,8 +37,9 @@ import {
  * of its own axis, and `ROUTE_FILTERS` (api/endpoints) drops anything its route would
  * not honour anyway.
  *
- * `age` and `income` each render a min/max pair (`ageMin`/`ageMax`,
- * `incomeMin`/`incomeMax` — incomes in reais), matching the API's range params.
+ * `age` is a free numeric min/max pair. `income` is a pair of bracket dropdowns
+ * (dataset stores faixas, not exact reais) — the selected bracket's floor/ceiling is
+ * sent as `incomeMin` / `incomeMax`.
  */
 export type FilterFieldKey =
   | "city"
@@ -60,6 +63,13 @@ function asCount(raw: string): number | undefined {
   return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : undefined;
 }
 
+/** Bracket option value → number, or `undefined` when "Todas" is chosen. */
+function asIncomeBound(raw: string): number | undefined {
+  if (raw === ALL_VALUE) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 export interface ChartFilterBarProps {
   fields: readonly FilterFieldKey[];
   className?: string;
@@ -80,6 +90,35 @@ export function ChartFilterBar({ fields, className }: ChartFilterBarProps) {
     () => [{ value: ALL_VALUE, label: "Todas" }, ...(cities.data ?? [])],
     [cities.data],
   );
+
+  // Keep min/max bracket lists coherent: a max option below the selected floor (or a
+  // min option above the selected ceiling) cannot produce rows with the current API.
+  const incomeMinOptions = React.useMemo(() => {
+    if (filters.incomeMax === undefined) return INCOME_MIN_OPTIONS;
+    return INCOME_MIN_OPTIONS.filter(
+      (opt) => opt.value === ALL_VALUE || Number(opt.value) <= filters.incomeMax!,
+    );
+  }, [filters.incomeMax]);
+
+  const incomeMaxOptions = React.useMemo(() => {
+    if (filters.incomeMin === undefined) return INCOME_MAX_OPTIONS;
+    const floor = filters.incomeMin;
+    return INCOME_MAX_OPTIONS.filter(
+      (opt) => opt.value === ALL_VALUE || Number(opt.value) >= floor,
+    );
+  }, [filters.incomeMin]);
+
+  // Drop a bound that became invalid after the other side changed (e.g. min raised
+  // above the current max).
+  React.useEffect(() => {
+    if (
+      filters.incomeMin !== undefined &&
+      filters.incomeMax !== undefined &&
+      filters.incomeMin > filters.incomeMax
+    ) {
+      setFilter("incomeMax", undefined);
+    }
+  }, [filters.incomeMin, filters.incomeMax, setFilter]);
 
   return (
     <div
@@ -120,21 +159,23 @@ export function ChartFilterBar({ fields, className }: ChartFilterBarProps) {
 
       {has("income") && (
         <>
-          <NumberFilterField
-            label="Renda mín. (R$)"
-            id={`${uid}-income-min`}
-            min={0}
-            step={100}
-            value={filters.incomeMin ?? ""}
-            onChange={(e) => setFilter("incomeMin", asCount(e.target.value))}
+          <SelectFilterField
+            label="Renda mín."
+            options={incomeMinOptions}
+            value={
+              filters.incomeMin !== undefined ? String(filters.incomeMin) : ALL_VALUE
+            }
+            onValueChange={(v) => setFilter("incomeMin", asIncomeBound(v))}
+            placeholder="Todas"
           />
-          <NumberFilterField
-            label="Renda máx. (R$)"
-            id={`${uid}-income-max`}
-            min={0}
-            step={100}
-            value={filters.incomeMax ?? ""}
-            onChange={(e) => setFilter("incomeMax", asCount(e.target.value))}
+          <SelectFilterField
+            label="Renda máx."
+            options={incomeMaxOptions}
+            value={
+              filters.incomeMax !== undefined ? String(filters.incomeMax) : ALL_VALUE
+            }
+            onValueChange={(v) => setFilter("incomeMax", asIncomeBound(v))}
+            placeholder="Todas"
           />
         </>
       )}

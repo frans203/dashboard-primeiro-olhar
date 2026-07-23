@@ -9,7 +9,7 @@ import { Dropdown, type DropdownOption } from "./Dropdown";
  * Reusable labelled filter fields. Two flavours share a consistent layout so filter
  * bars look uniform across charts:
  *  - `SelectFilterField` — a labelled {@link Dropdown} (enum-style filters).
- *  - `NumberFilterField` — a labelled numeric {@link Input} (age / income filters).
+ *  - `NumberFilterField` — a labelled numeric {@link Input} (age filters).
  *
  * Both accept `className` (overrides the wrapper) and forward native props.
  */

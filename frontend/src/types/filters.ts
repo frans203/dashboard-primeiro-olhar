@@ -39,7 +39,9 @@ export interface Filters {
   city?: string;
   ageMin?: number;
   ageMax?: number;
+  /** Bracket floor in reais (from the dataset faixas — see `INCOME_MIN_OPTIONS`). */
   incomeMin?: number;
+  /** Bracket ceiling in reais (from the dataset faixas — see `INCOME_MAX_OPTIONS`). */
   incomeMax?: number;
   therapy?: TherapyKey;
   parentEducation?: ParentEducation;

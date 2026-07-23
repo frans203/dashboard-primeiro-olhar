@@ -22,9 +22,10 @@ import {
 /**
  * Validates the filters of a chart before they are serialized into a query string.
  * Every filter is optional; the enums are the same `const` arrays that produce the TS
- * unions in `types/filters.ts`. Ages/incomes must be non-negative integers (incomes are
- * in reais). Unknown keys are stripped so a chart can never smuggle a param its route
- * does not accept.
+ * unions in `types/filters.ts`. Ages must be non-negative integers; incomes are
+ * bracket floors/ceilings chosen from the dataset faixas (see `lib/filter-options.ts`),
+ * still sent as non-negative integers in reais. Unknown keys are stripped so a chart
+ * can never smuggle a param its route does not accept.
  */
 export const filtersSchema = z.object({
   city: z.string().trim().min(1).optional(),
