@@ -38,7 +38,24 @@ def test_blob_path_without_token_names_the_missing_variable(monkeypatch):
     assert "BLOB_READ_WRITE_TOKEN" in message
 
 
-def test_missing_file_and_no_blob_path_explains_both_options(monkeypatch):
+def test_missing_file_locally_points_at_the_disk_fix(monkeypatch):
+    """Local advice must be local: put the file there (or set DATA_PATH)."""
+    monkeypatch.delenv("VERCEL", raising=False)
+    monkeypatch.setattr(cleaning, "TSV_PATH", "/caminho/que/nao/existe.tsv")
+
+    with pytest.raises(DatasetUnavailable) as exc:
+        cleaning.load_raw_df()
+
+    message = str(exc.value)
+    assert "/caminho/que/nao/existe.tsv" in message
+    assert "DATA_PATH" in message
+    # Telling someone running locally to upload to a Blob store would be noise.
+    assert "INSTITUTE_BLOB_PATH" not in message
+
+
+def test_missing_file_on_vercel_points_at_the_blob_fix(monkeypatch):
+    """On a serverless host the disk is not an option, so the advice changes."""
+    monkeypatch.setenv("VERCEL", "1")
     monkeypatch.setattr(cleaning, "TSV_PATH", "/caminho/que/nao/existe.tsv")
 
     with pytest.raises(DatasetUnavailable) as exc:
@@ -53,7 +70,7 @@ def test_institute_routes_answer_503_instead_of_dying(monkeypatch):
 
     resp = client.get("/api/indicators")
     assert resp.status_code == 503
-    assert "INSTITUTE_BLOB_PATH" in resp.json()["detail"]
+    assert "DATA_PATH" in resp.json()["detail"]
 
 
 def test_service_stays_up_when_the_dataset_cannot_load(monkeypatch):

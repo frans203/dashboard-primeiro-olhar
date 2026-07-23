@@ -49,8 +49,8 @@ mostrar dados reais.
 
 ### Backend — http://localhost:8000
 
-Confira antes que o TSV esteja em `backend/data/Formulario2_Resumido.tsv` (veja
-[Dados](#dados--leia-antes-de-rodar)) — sem ele o serviço não inicia.
+Requer **Python 3.10 ou superior** (o SDK da Vercel, usado só para o Blob, exige isso).
+Nenhum `.env` é necessário para rodar local.
 
 ```bash
 cd backend
@@ -61,7 +61,12 @@ uvicorn main:app --reload --port 8000
 ```
 
 Documentação interativa da API em http://localhost:8000/docs.
-Testes: `pytest -q`.
+
+**Sem o TSV em `backend/data/`** o serviço **sobe do mesmo jeito**: a raiz responde
+`200`, as rotas `/api/*` respondem `503` dizendo onde colocar o arquivo, e a tela
+**Analisar CSV** funciona normalmente (ela não depende dos dados do Instituto).
+Já o `pytest` **precisa** do arquivo: a suíte monta os CSVs de teste a partir dele, e
+sem ele você verá ~27 falhas com `DatasetUnavailable`.
 
 ### Frontend — http://localhost:5173
 
@@ -115,12 +120,16 @@ está em [`DEPLOY.md`](DEPLOY.md), que também traz a alternativa fora da Vercel
 ## Testes
 
 ```bash
-cd backend && pytest -q     # 65 testes
+cd backend && pytest -q     # 60 passando + 5 ignorados (Blob), sem nenhum .env
 cd frontend && npm run lint # tsc --noEmit
 ```
 
+O `pytest` exige o TSV em `backend/data/` (veja [Backend](#backend--httplocalhost8000)).
+
 Os testes de Blob (`backend/tests/test_blob_storage.py`) falam com um store de verdade e
-são **ignorados automaticamente** quando não há `BLOB_READ_WRITE_TOKEN` no `.env`.
+são **ignorados automaticamente** quando não há `BLOB_READ_WRITE_TOKEN` no `.env`; com
+um token presente, eles rodam e gravam/apagam no store. A suíte normal nunca acessa a
+rede: o `conftest.py` zera as variáveis de Blob.
 
 Toda rota nova deve subir com seus testes de pytest — veja a regra de testes no
 [`backend/CLAUDE.md`](backend/CLAUDE.md).

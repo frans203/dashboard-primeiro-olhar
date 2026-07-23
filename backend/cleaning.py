@@ -389,11 +389,19 @@ def load_raw_df() -> pd.DataFrame:
         return read_tabular(blob_storage.read(path), path)
 
     if not os.path.exists(TSV_PATH):
-        where = "Na Vercel não existe disco: o arquivo " if blob_storage.on_vercel() else "O arquivo "
+        # The advice differs by environment: on a serverless host the disk is not an
+        # option at all, while locally putting the file in place IS the fix.
+        if blob_storage.on_vercel():
+            raise DatasetUnavailable(
+                "Na Vercel não existe disco persistente, e INSTITUTE_BLOB_PATH não foi "
+                "definido. Suba o TSV do Instituto para o Blob store e aponte "
+                "INSTITUTE_BLOB_PATH para o caminho dele."
+            )
         raise DatasetUnavailable(
-            f"{where}do Instituto não está em {TSV_PATH} e INSTITUTE_BLOB_PATH não foi "
-            "definido. Suba o arquivo para o Blob store e aponte INSTITUTE_BLOB_PATH "
-            "para o caminho dele."
+            f"O arquivo do Instituto não foi encontrado em {TSV_PATH}. Coloque o TSV "
+            "nesse caminho (ele não é versionado — peça a quem já trabalha no projeto) "
+            "ou aponte DATA_PATH para onde ele está. A tela 'Analisar CSV' funciona "
+            "sem ele."
         )
 
     return pd.read_csv(TSV_PATH, sep="\t", dtype=str, keep_default_na=False)
