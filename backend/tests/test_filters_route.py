@@ -84,6 +84,62 @@ def test_demographics_unknown_city_422():
     assert resp.status_code == 422
 
 
+def test_demographics_sex_filter_narrows_age_distribution():
+    """Age/cities/maternities charts send ``sex``; the route must honour it."""
+    all_rows = client.get("/api/demographics")
+    male = client.get("/api/demographics", params={"sex": "male"})
+    female = client.get("/api/demographics", params={"sex": "female"})
+    assert all_rows.status_code == 200
+    assert male.status_code == 200
+    assert female.status_code == 200
+
+    def age_total(body: dict) -> int:
+        return sum(a["count"] for a in body["ageDistribution"])
+
+    all_n = age_total(all_rows.json())
+    male_n = age_total(male.json())
+    female_n = age_total(female.json())
+    assert male_n > 0
+    assert female_n > 0
+    assert male_n < all_n
+    assert female_n < all_n
+    # sexDistribution collapses to the selected sex when filtered
+    assert {s["label"] for s in male.json()["sexDistribution"]} == {"Masculino"}
+    assert {s["label"] for s in female.json()["sexDistribution"]} == {"Feminino"}
+
+
+def test_demographics_income_min_uses_bracket_floor():
+    """Renda mín. thresholds on the bracket floor (highest known start ≈ 10 SM).
+
+    Floors above every bracket start (e.g. 200_000) must match nobody — the
+    open-top sentinel ceiling must not keep those rows.
+    """
+    from cleaning import MINIMUM_WAGE
+
+    at_top_bracket = client.get(
+        "/api/demographics", params={"incomeMin": 10 * MINIMUM_WAGE}
+    )
+    too_high = client.get("/api/demographics", params={"incomeMin": 200_000})
+    assert at_top_bracket.status_code == 200
+    assert too_high.status_code == 200
+
+    top_n = sum(s["count"] for s in at_top_bracket.json()["sexDistribution"])
+    high_n = sum(s["count"] for s in too_high.json()["sexDistribution"])
+    assert top_n > 0
+    assert high_n == 0
+
+
+def test_demographics_income_max_is_upper_bound():
+    """Renda máx. keeps only brackets whose upper bound is <= the ceiling."""
+    capped = client.get("/api/demographics", params={"incomeMax": 5_000})
+    assert capped.status_code == 200
+    capped_total = sum(s["count"] for s in capped.json()["sexDistribution"])
+
+    all_rows = client.get("/api/demographics")
+    all_total = sum(s["count"] for s in all_rows.json()["sexDistribution"])
+    assert 0 < capped_total < all_total
+
+
 # --------------------------------------------------------------------------- #
 # /api/neonatal
 # --------------------------------------------------------------------------- #
@@ -103,6 +159,32 @@ def test_neonatal_apgar_and_delivery():
     assert "Cesárea" in delivery_labels
     assert "Normal" in delivery_labels
     _assert_label_counts(body["complications"], min_len=1)
+
+
+def test_neonatal_delivery_type_and_nicu_filters():
+    """Apgar/complications charts send these; the route must honour them."""
+    all_rows = client.get("/api/neonatal")
+    cesarean = client.get("/api/neonatal", params={"deliveryType": "cesarean"})
+    vaginal = client.get("/api/neonatal", params={"deliveryType": "vaginal"})
+    nicu_yes = client.get("/api/neonatal", params={"nicu": "true"})
+    nicu_no = client.get("/api/neonatal", params={"nicu": "false"})
+    assert all(r.status_code == 200 for r in (all_rows, cesarean, vaginal, nicu_yes, nicu_no))
+
+    def complication_total(body: dict) -> int:
+        return sum(c["count"] for c in body["complications"])
+
+    all_n = complication_total(all_rows.json())
+    assert complication_total(cesarean.json()) < all_n
+    assert complication_total(vaginal.json()) < all_n
+    assert complication_total(cesarean.json()) + complication_total(vaginal.json()) <= all_n
+
+    # Filtered delivery axis collapses to the selected type
+    assert {d["label"] for d in cesarean.json()["deliveryType"]} == {"Cesárea"}
+    assert {d["label"] for d in vaginal.json()["deliveryType"]} == {"Normal"}
+
+    # NICU filter: rate becomes 1.0 or 0.0 over the known subset
+    assert nicu_yes.json()["nicuRate"] == 1.0
+    assert nicu_no.json()["nicuRate"] == 0.0
 
 
 # --------------------------------------------------------------------------- #
