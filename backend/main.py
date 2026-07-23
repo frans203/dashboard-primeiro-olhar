@@ -3,9 +3,13 @@
 Reads the TSV into memory (via ``cleaning``), enables CORS (frontend and backend run
 on different ports) and registers every route from ``routes``.
 
+Two datasets are served: the bundled TSV under ``/api`` (fixed, never replaced) and
+the CSV a user uploads, under ``/api/uploads`` (see ``uploaded_dataset``).
+
 Run locally:  uvicorn main:app --reload --port 8000
 """
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -29,17 +33,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Frontend dev servers (Vite default 5173). Adjust for production origins.
+# Origins allowed to call the API. Defaults to the Vite dev servers; in production set
+# ALLOWED_ORIGINS to the deployed frontend URL(s), comma-separated — e.g.
+#   ALLOWED_ORIGINS=https://primeiro-olhar.vercel.app
+# Without it the browser blocks every request from the deployed frontend.
+DEFAULT_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", ",".join(DEFAULT_ORIGINS)).split(",")
+    if origin.strip()
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET"],
+    # POST/DELETE exist only for the uploaded-CSV slot (/api/uploads); every
+    # analytics route is a GET.
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
 )
 

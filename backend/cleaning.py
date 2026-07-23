@@ -7,6 +7,10 @@ This module reads the TSV once and produces a single cleaned ``pandas.DataFrame`
 whose columns are normalized (English snake_case) and typed. Every other backend
 module (``analytics``, ``routes``) consumes the output of :func:`get_clean_df`.
 
+Reading and cleaning are separate: :func:`build_clean_df` cleans *any* raw frame with
+the expected columns, so the same rules serve the bundled TSV (:func:`clean_df`) and a
+CSV uploaded at runtime (``uploaded_dataset``), which is read by :func:`read_tabular`.
+
 It also exposes the **normalized therapies vector** (:data:`THERAPIES`) which is the
 single source of truth used by the ``Therapy`` enum, the query-param validation and
 the ``/api/filters/therapies`` route.
@@ -16,6 +20,7 @@ Pandas is used at every step (decision fixed for the project).
 
 from __future__ import annotations
 
+import io
 import os
 from functools import lru_cache
 from typing import Optional
@@ -27,7 +32,11 @@ import pandas as pd
 # --------------------------------------------------------------------------- #
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
-TSV_PATH = os.path.join(DATA_DIR, "Formulario2_Resumido.tsv")
+
+#: Where the institute's file lives. Overridable with ``DATA_PATH`` because the file is
+#: NOT in the repository (personal data — see the root ``.gitignore``): in production it
+#: is placed on the host out of band, wherever that host mounts secret files.
+TSV_PATH = os.getenv("DATA_PATH") or os.path.join(DATA_DIR, "Formulario2_Resumido.tsv")
 
 #: Sentinel used across the raw file to mean "missing".
 MISSING_TOKENS = {"", "-", "–", "—"}
@@ -355,6 +364,89 @@ def load_raw_df() -> pd.DataFrame:
     return pd.read_csv(TSV_PATH, sep="\t", dtype=str, keep_default_na=False)
 
 
+#: Raw columns :func:`build_clean_df` reads. A file missing any of them cannot be
+#: cleaned, so uploads are rejected with the list of what is absent.
+REQUIRED_COLUMNS: list[str] = [
+    "Nome_Crianca",
+    "Data_Nascimento_Crianca",
+    "Sexo_Crianca",
+    "Cidade_Nascimento_Crianca",
+    "Maternidade",
+    "Apgar_1min",
+    "Apgar_5min",
+    "UTI_Nascimento",
+    "Intercorrencia_Neonatal",
+    "Internacao_Nascimento",
+    "Cirurgia_Cardiaca",
+    "Descoberta_T21",
+    "Terapias",
+    "Doencas_Crianca",
+    "Grau_Escolaridade_Mae",
+    "Grau_Escolaridade_Pai",
+    "Estado_Civil_Mae",
+    "Estado_Civil_Pai",
+    "Renda_Familiar",
+    "Total_Pessoas_Casa",
+    "Total_Contribuintes_Renda",
+    "BPC",
+    "Auxilio_Governo",
+    "Tipo_Parto",
+]
+
+#: Separators tried, in order, when sniffing an uploaded file.
+_SEPARATORS = ["\t", ",", ";"]
+
+
+def missing_columns(raw: pd.DataFrame) -> list[str]:
+    """Required columns absent from ``raw``, in the canonical order."""
+    present = set(raw.columns)
+    return [c for c in REQUIRED_COLUMNS if c not in present]
+
+
+def _decode(content: bytes) -> str:
+    """Decode an uploaded file: UTF-8 (BOM-aware) with a latin-1 fallback."""
+    for encoding in ("utf-8-sig", "utf-8", "latin-1"):
+        try:
+            return content.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    # latin-1 maps every byte, so this is unreachable in practice.
+    return content.decode("utf-8", errors="replace")
+
+
+def read_tabular(content: bytes, filename: str = "") -> pd.DataFrame:
+    """Parse uploaded CSV/TSV bytes into a raw string DataFrame.
+
+    Same contract as :func:`load_raw_df` (``dtype=str``, no NA inference) so the
+    cleaning rules behave identically. The separator is sniffed: whichever of tab,
+    comma or semicolon yields the most required columns wins — a plain header count
+    would be fooled by a one-column parse of the wrong separator.
+    """
+    text = _decode(content)
+    if not text.strip():
+        raise ValueError("O arquivo está vazio.")
+
+    best: Optional[pd.DataFrame] = None
+    best_score = -1
+    for sep in _SEPARATORS:
+        try:
+            candidate = pd.read_csv(
+                io.StringIO(text), sep=sep, dtype=str, keep_default_na=False
+            )
+        except (pd.errors.ParserError, ValueError):
+            continue
+        score = len(REQUIRED_COLUMNS) - len(missing_columns(candidate))
+        if score > best_score:
+            best, best_score = candidate, score
+
+    if best is None:
+        raise ValueError(
+            f"Não foi possível ler o arquivo{f' {filename}' if filename else ''} "
+            "como CSV/TSV."
+        )
+    return best
+
+
 def _compute_age(birth: Optional[pd.Timestamp], reference: pd.Timestamp) -> Optional[int]:
     if birth is None:
         return None
@@ -365,12 +457,22 @@ def _compute_age(birth: Optional[pd.Timestamp], reference: pd.Timestamp) -> Opti
 
 
 def clean_df(reference_date: Optional[pd.Timestamp] = None) -> pd.DataFrame:
-    """Build the cleaned DataFrame.
+    """Build the cleaned DataFrame for the bundled TSV.
 
     ``reference_date`` is the "today" used to compute the child's age; defaults to
     :func:`pandas.Timestamp.today`. Passing it explicitly keeps tests deterministic.
     """
-    raw = load_raw_df()
+    return build_clean_df(load_raw_df(), reference_date)
+
+
+def build_clean_df(
+    raw: pd.DataFrame, reference_date: Optional[pd.Timestamp] = None
+) -> pd.DataFrame:
+    """Clean an already-read raw frame (the bundled TSV or an uploaded CSV).
+
+    ``raw`` must carry :data:`REQUIRED_COLUMNS` — check with :func:`missing_columns`
+    first; a missing column raises ``KeyError`` here.
+    """
     ref = reference_date if reference_date is not None else pd.Timestamp.today().normalize()
 
     df = pd.DataFrame()

@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+tests/
+.env
+# O TSV nunca entra na imagem: dado pessoal, entregue ao host por fora (DEPLOY.md).
+data/*.tsv
+data/*.csv
+data/*.xlsx

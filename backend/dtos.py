@@ -10,6 +10,10 @@ Two families:
   route, including the ones whose body is still a ``# TODO``.
 
 Distribution endpoints use the uniform ``{label, count}`` item shape.
+
+The ``Upload*Query`` models at the bottom mirror the query DTOs above for the
+``/api/uploads`` routes; they differ only in how ``city`` is validated (see the note
+there).
 """
 
 from __future__ import annotations
@@ -243,3 +247,111 @@ class IndicatorsResponse(BaseModel):
     therapyRate: float
     surgeryRate: float
     totalChildren: int
+
+
+# --------------------------------------------------------------------------- #
+# Uploaded dataset (mirror routes under /api/uploads)
+# --------------------------------------------------------------------------- #
+
+
+class UploadStatusResponse(BaseModel):
+    """Metadata of the CSV currently loaded in the uploaded-dataset slot."""
+
+    filename: str
+    rowCount: int
+    uploadedAt: str
+    version: int
+    warnings: list[str] = []
+
+
+# The mirror routes take the SAME filter subsets as their ``/api`` counterparts; only
+# ``city`` differs. It cannot be validated by a field validator here because the valid
+# set belongs to whichever file was uploaded — the route validates it against
+# ``uploaded_dataset.uploaded_cities()`` instead (422 for an unknown one), so a legit
+# city of the uploaded file is never rejected for being absent from the institute's.
+class _UploadQuery(BaseModel):
+    city: Optional[str] = None
+
+
+class UploadDemographicsQuery(_UploadQuery):
+    ageMin: Optional[int] = None
+    ageMax: Optional[int] = None
+    incomeMin: Optional[int] = None
+    incomeMax: Optional[int] = None
+    parentEducation: Optional[ParentEducation] = None
+    benefit: Optional[Benefit] = None
+    sex: Optional[Sex] = None
+
+
+class UploadNeonatalQuery(_UploadQuery):
+    ageMin: Optional[int] = None
+    ageMax: Optional[int] = None
+    incomeMin: Optional[int] = None
+    incomeMax: Optional[int] = None
+    sex: Optional[Sex] = None
+    deliveryType: Optional[DeliveryType] = None
+    nicu: Optional[bool] = None
+
+
+class UploadDiagnosisQuery(_UploadQuery):
+    incomeMin: Optional[int] = None
+    incomeMax: Optional[int] = None
+    parentEducation: Optional[ParentEducation] = None
+    benefit: Optional[Benefit] = None
+
+
+class UploadHealthQuery(_UploadQuery):
+    ageMin: Optional[int] = None
+    ageMax: Optional[int] = None
+    sex: Optional[Sex] = None
+    incomeMin: Optional[int] = None
+    incomeMax: Optional[int] = None
+
+
+class UploadTherapiesQuery(_UploadQuery):
+    ageMin: Optional[int] = None
+    ageMax: Optional[int] = None
+    incomeMin: Optional[int] = None
+    incomeMax: Optional[int] = None
+    parentEducation: Optional[ParentEducation] = None
+    benefit: Optional[Benefit] = None
+
+
+class UploadSocioeconomicQuery(_UploadQuery):
+    ageMin: Optional[int] = None
+    ageMax: Optional[int] = None
+    incomeMin: Optional[int] = None
+    incomeMax: Optional[int] = None
+    parentEducation: Optional[ParentEducation] = None
+    benefit: Optional[Benefit] = None
+
+
+class UploadIncomeTherapiesQuery(_UploadQuery):
+    ageMin: Optional[int] = None
+    ageMax: Optional[int] = None
+    parentEducation: Optional[ParentEducation] = None
+    sex: Optional[Sex] = None
+
+
+class UploadDeliveryComplicationsQuery(_UploadQuery):
+    ageMin: Optional[int] = None
+    ageMax: Optional[int] = None
+    incomeMin: Optional[int] = None
+    incomeMax: Optional[int] = None
+    sex: Optional[Sex] = None
+
+
+class UploadBpcIncomeQuery(_UploadQuery):
+    ageMin: Optional[int] = None
+    ageMax: Optional[int] = None
+    parentEducation: Optional[ParentEducation] = None
+
+
+class UploadIndicatorsQuery(_UploadQuery):
+    ageMin: Optional[int] = None
+    ageMax: Optional[int] = None
+    incomeMin: Optional[int] = None
+    incomeMax: Optional[int] = None
+    parentEducation: Optional[ParentEducation] = None
+    benefit: Optional[Benefit] = None
+    sex: Optional[Sex] = None

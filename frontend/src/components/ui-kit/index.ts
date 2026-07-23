@@ -14,3 +14,4 @@ export {
 } from "./FilterField";
 export { Card, type PanelCardProps } from "./Card";
 export { IndicatorCard, type IndicatorCardProps } from "./IndicatorCard";
+export { TabsBar, type TabItem, type TabsBarProps } from "./TabsBar";
