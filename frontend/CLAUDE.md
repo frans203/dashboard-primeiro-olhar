@@ -148,6 +148,14 @@ to a section, not to a page.
   categorical (`monochrome={false}`); pass `monochrome` for a single-hue chart. **Change
   a hex or the order → re-run the skill's validator, don't eyeball.** Steps are tuned for
   the light surface (the app renders light-only).
+- **Chart LETTERING:** those 8 hues are mark colors, not text colors (the bright yellow is
+  ~1.1:1 on the white card). Recharts paints legend labels and tooltip rows in the series
+  color, so `CHART_TEXT_COLORS` / `readableTextColor` hold a darkened twin of each hue at
+  **4.5:1 on white** (same OKLCH hue, lower lightness) and `charts/readable-text.tsx` wires
+  them in: legend via `formatter`, tooltip via `TOOLTIP_ITEM_STYLE` + `tooltipValueFormatter`
+  (the tooltip's series NAME must stay a plain string — Recharts drops a name that isn't
+  string/number, so it is neutralized by the item style instead). Marks keep the bright
+  color; only the lettering darkens. A new generic chart should pass these too.
 - **Decorative background:** `.app-bg` in `index.css` — two very faint drifting blue &
   yellow blobs behind everything (`AppShell` renders the element; the body keeps
   `bg-background`, cards are opaque, so the wash only shows in the gaps). Cosmetic only:

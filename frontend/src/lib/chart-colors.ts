@@ -41,3 +41,47 @@ export const CHART_COLORS = [
 export function chartColor(index: number): string {
   return CHART_COLORS[index % CHART_COLORS.length];
 }
+
+/**
+ * TEXT variant of each slot, for anywhere the palette colors *lettering* instead of a
+ * shape — Recharts paints legend labels and tooltip rows in the series color, and these
+ * hues are mark colors, not text colors: `#fff800` on the white card is ~1.1:1, i.e.
+ * unreadable.
+ *
+ * Derived, not hand-picked: same OKLCH hue, lightness lowered (chroma clipped only to
+ * stay in gamut) until each reaches **WCAG AA 4.5:1 on `#ffffff`**. Measured —
+ *   blue 4.53 · yellow 4.52 · magenta 4.50 · green 4.95 · aqua 4.51 · orange 4.53 ·
+ *   violet 8.56 · red 4.51    (green and violet already passed and are unchanged)
+ *
+ * The MARK keeps `CHART_COLORS`: only the lettering darkens, so the slice/bar a label
+ * points at is still the bright brand color. Same rule as the palette above — if you
+ * change a hex, re-measure the contrast instead of eyeballing it.
+ */
+export const CHART_TEXT_COLORS = [
+  "#2678cb", // 1 · brand blue
+  "#7d7a08", // 2 · yellow
+  "#bb537d", // 3 · magenta
+  "#008300", // 4 · green
+  "#00885c", // 5 · aqua
+  "#cd4c0f", // 6 · orange
+  "#4a3aa7", // 7 · violet
+  "#d83e3f", // 8 · red
+] as const;
+
+/** Readable lettering color for categorical slot `index` (cycled like `chartColor`). */
+export function chartTextColor(index: number): string {
+  return CHART_TEXT_COLORS[index % CHART_TEXT_COLORS.length];
+}
+
+const TEXT_BY_FILL: Record<string, string> = Object.fromEntries(
+  CHART_COLORS.map((fill, i) => [fill.toLowerCase(), CHART_TEXT_COLORS[i]]),
+);
+
+/**
+ * Readable lettering color for a mark painted `fill`. Recharts hands the legend and the
+ * tooltip the series color, so we translate it back to its text variant; a color outside
+ * the palette (or a missing one) falls back to the theme foreground instead of guessing.
+ */
+export function readableTextColor(fill?: string): string {
+  return (fill && TEXT_BY_FILL[fill.toLowerCase()]) || "hsl(var(--foreground))";
+}

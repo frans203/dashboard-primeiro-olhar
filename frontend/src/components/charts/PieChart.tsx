@@ -8,6 +8,11 @@ import {
 } from "recharts";
 
 import { chartColor } from "@/lib/chart-colors";
+import {
+  TOOLTIP_ITEM_STYLE,
+  legendTextFormatter,
+  tooltipValueFormatter,
+} from "./readable-text";
 import type { LabelCount } from "@/api/schemas";
 
 /**
@@ -36,8 +41,15 @@ export function PieChart({ data, donut = true }: PieChartProps) {
             <Cell key={i} fill={chartColor(i)} />
           ))}
         </Pie>
-        <Tooltip />
-        <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: 12 }} />
+        {/* Legend/tooltip lettering uses the darkened text palette — the bright yellow
+            slice color is unreadable as text on the white card. See `readable-text`. */}
+        <Tooltip itemStyle={TOOLTIP_ITEM_STYLE} formatter={tooltipValueFormatter} />
+        <Legend
+          verticalAlign="bottom"
+          height={36}
+          wrapperStyle={{ fontSize: 12 }}
+          formatter={legendTextFormatter}
+        />
       </RPieChart>
     </ResponsiveContainer>
   );
