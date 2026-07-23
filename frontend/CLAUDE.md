@@ -17,7 +17,13 @@ npm run lint       # tsc --noEmit
 
 The backend must be running for live data. In dev, Vite proxies `/api` to `:8000`
 (see `vite.config.ts`); for other origins set `VITE_API_URL` (`VITE_API_BASE_URL` is
-still honoured as an alias).
+still honoured as an alias). See `.env.example`.
+
+**Leave `VITE_API_URL` empty in production.** The deploy puts the frontend and the API
+in the same Vercel project (`vercel.json` routes `/api` to the backend service), so a
+relative path is correct and there is no CORS. Fill it in only when the API lives on
+another domain — and remember `VITE_*` is injected at **build time**, so changing it
+requires a rebuild. Deploy steps: [`../DEPLOY.md`](../DEPLOY.md).
 
 ## Stack
 
