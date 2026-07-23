@@ -360,7 +360,21 @@ def _income_bracket(value) -> Optional[dict]:
 
 
 def load_raw_df() -> pd.DataFrame:
-    """Read the raw TSV as strings (no type inference)."""
+    """Read the institute's raw file as strings (no type inference).
+
+    Two sources, decided at call time:
+
+    * **Blob** when a token and ``INSTITUTE_BLOB_PATH`` are configured — the file has
+      no other home on a serverless host (see :mod:`blob_storage`);
+    * **disk** (``TSV_PATH``) otherwise, which is local development and the tests.
+    """
+    import blob_storage  # local import: keeps ``cleaning`` importable without the SDK
+
+    if blob_storage.enabled():
+        path = blob_storage.institute_path()
+        if path:
+            return read_tabular(blob_storage.read(path), path)
+
     return pd.read_csv(TSV_PATH, sep="\t", dtype=str, keep_default_na=False)
 
 

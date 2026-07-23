@@ -55,14 +55,11 @@ Você faz os passos 1 a 3, eu implemento e testo o código com o seu store real
    Vercel injetar a variável `BLOB_READ_WRITE_TOKEN` no projeto automaticamente — você
    não precisa copiar nada para lá.
 
-### 2. Subir o TSV para o store (você)
+### 2. Subir o TSV para o store (você) — **feito**
 
-No store criado, abra o **file browser** e faça upload do arquivo local
-`backend/data/Formulario2_Resumido.tsv` com o caminho:
-
-```
-institute/Formulario2_Resumido.tsv
-```
+O arquivo já está no store, na raiz, como `Formulario2_Resumido.tsv` (203 KB). O
+caminho pode ser qualquer um; o que importa é a variável `INSTITUTE_BLOB_PATH` bater
+**exatamente** com ele.
 
 Esse arquivo **nunca** passa pelo Git. É a única cópia em produção.
 
@@ -73,27 +70,29 @@ cole no seu `backend/.env` local:
 
 ```bash
 BLOB_READ_WRITE_TOKEN=vercel_blob_rw_xxxxxxxx
-INSTITUTE_BLOB_PATH=institute/Formulario2_Resumido.tsv
+INSTITUTE_BLOB_PATH=Formulario2_Resumido.tsv
 ```
 
 O `backend/.env` está no `.gitignore` — o token não vai para o repositório. Ele serve
 para eu **testar a integração de verdade** antes de você fazer o deploy, em vez de
 mandar você subir código não testado.
 
-### 4. Implementação (eu)
+### 4. Implementação (eu) — **feita e testada contra o store real**
 
-Com o store no ar, eu implemento e testo localmente:
-
-- `backend/blob_storage.py` — cliente do Blob (gravar, ler, listar, apagar).
-- `backend/cleaning.py` — o TSV do Instituto passa a ser lido do Blob quando
-  `BLOB_READ_WRITE_TOKEN` existe; continua lendo do disco no seu ambiente local sem
-  token, então nada muda no dia a dia.
-- `backend/uploaded_dataset.py` — o CSV enviado passa a ser gravado no Blob com um nome
-  único por envio (nunca sobrescrito, para não esbarrar no cache do CDN); o "atual" é o
-  mais recente. Cada cópia da aplicação baixa e limpa uma vez, e mantém em cache.
-- `backend/routes/uploads.py` — limite de upload cai de 10 MB para 4 MB (a Vercel
-  recusa corpos acima de ~4,5 MB).
-- Testes cobrindo o novo caminho.
+- `backend/blob_storage.py` — cliente do Blob sobre o **SDK oficial** (`vercel`),
+  sempre em modo `private`.
+- `backend/cleaning.py` — o TSV do Instituto é lido do Blob quando
+  `BLOB_READ_WRITE_TOKEN` existe; sem token, continua lendo do disco. Seu dia a dia
+  local não muda.
+- `backend/uploaded_dataset.py` — o CSV enviado é gravado no Blob com um nome único por
+  envio (`uploads/<id>__<nome>`), nunca sobrescrito, o que evita a janela de cache do
+  CDN. O "atual" é simplesmente o mais recente; cada cópia da aplicação baixa e limpa
+  uma vez e memoriza. A versão vem do carimbo de tempo do próprio store, então todas as
+  cópias calculam o mesmo número.
+- `backend/routes/uploads.py` — limite de upload de 10 MB → 4 MB (a Vercel recusa
+  corpos acima de ~4,5 MB antes mesmo de chegar no nosso código).
+- `tests/test_blob_storage.py` — testes de integração contra o store de verdade,
+  ignorados automaticamente quando não há token.
 
 **Nada muda no frontend** e nenhuma tela muda de comportamento.
 
@@ -104,7 +103,7 @@ No projeto → **Settings → Environment Variables**:
 | Variável | Valor | Observação |
 |---|---|---|
 | `BLOB_READ_WRITE_TOKEN` | *(automática)* | criada ao conectar o store no passo 1 |
-| `INSTITUTE_BLOB_PATH` | `institute/Formulario2_Resumido.tsv` | onde o TSV está no store |
+| `INSTITUTE_BLOB_PATH` | `Formulario2_Resumido.tsv` | caminho exato dentro do store |
 | `VITE_API_URL` | *(deixe em branco ou não crie)* | mesmo domínio → caminho relativo |
 
 Não precisa de `ALLOWED_ORIGINS` nem de `DATA_PATH` na Vercel: o primeiro só importa
