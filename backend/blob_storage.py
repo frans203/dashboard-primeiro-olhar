@@ -35,9 +35,20 @@ class BlobUnavailable(RuntimeError):
     """The Blob store could not be reached, or the object is not there."""
 
 
+#: Names the official SDK accepts for the store token (see ``vercel._internal.blob``).
+#: It does NOT fall back to OIDC, so one of these must be in the environment — on
+#: Vercel, connecting the store to the project is what puts it there.
+TOKEN_ENV_VARS = ("BLOB_READ_WRITE_TOKEN", "VERCEL_BLOB_READ_WRITE_TOKEN")
+
+
 def enabled() -> bool:
     """True when a Blob token is configured — i.e. storage is Blob-backed."""
-    return bool(os.getenv("BLOB_READ_WRITE_TOKEN"))
+    return any(os.getenv(name) for name in TOKEN_ENV_VARS)
+
+
+def on_vercel() -> bool:
+    """True when running on Vercel, where there is no persistent disk to fall back to."""
+    return bool(os.getenv("VERCEL"))
 
 
 def institute_path() -> Optional[str]:

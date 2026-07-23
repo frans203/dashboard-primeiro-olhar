@@ -359,21 +359,42 @@ def _income_bracket(value) -> Optional[dict]:
 # --------------------------------------------------------------------------- #
 
 
+class DatasetUnavailable(RuntimeError):
+    """The institute's file cannot be loaded — with a message that says what to fix.
+
+    ``main`` maps it to a 503, so a misconfigured deploy answers "here is what is
+    missing" on every ``/api/*`` request instead of killing the process at startup.
+    The ``/api/uploads/*`` routes are unaffected: they never touch this file.
+    """
+
+
 def load_raw_df() -> pd.DataFrame:
     """Read the institute's raw file as strings (no type inference).
 
-    Two sources, decided at call time:
-
-    * **Blob** when a token and ``INSTITUTE_BLOB_PATH`` are configured — the file has
-      no other home on a serverless host (see :mod:`blob_storage`);
-    * **disk** (``TSV_PATH``) otherwise, which is local development and the tests.
+    The source is chosen by INTENT, never by silent fallback: setting
+    ``INSTITUTE_BLOB_PATH`` means "this file lives in Blob", so a missing token is an
+    error to report, not a reason to look at a disk that (on Vercel) will never have
+    the file.
     """
     import blob_storage  # local import: keeps ``cleaning`` importable without the SDK
 
-    if blob_storage.enabled():
-        path = blob_storage.institute_path()
-        if path:
-            return read_tabular(blob_storage.read(path), path)
+    path = blob_storage.institute_path()
+    if path:
+        if not blob_storage.enabled():
+            raise DatasetUnavailable(
+                f"INSTITUTE_BLOB_PATH está definido ({path}), mas falta o token do "
+                "Blob. Conecte o store ao projeto (isso injeta BLOB_READ_WRITE_TOKEN) "
+                "e refaça o deploy — variáveis novas não valem para deploys antigos."
+            )
+        return read_tabular(blob_storage.read(path), path)
+
+    if not os.path.exists(TSV_PATH):
+        where = "Na Vercel não existe disco: o arquivo " if blob_storage.on_vercel() else "O arquivo "
+        raise DatasetUnavailable(
+            f"{where}do Instituto não está em {TSV_PATH} e INSTITUTE_BLOB_PATH não foi "
+            "definido. Suba o arquivo para o Blob store e aponte INSTITUTE_BLOB_PATH "
+            "para o caminho dele."
+        )
 
     return pd.read_csv(TSV_PATH, sep="\t", dtype=str, keep_default_na=False)
 
