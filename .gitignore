@@ -29,3 +29,7 @@ dist-ssr/
 Thumbs.db
 .idea/
 .vscode/
+
+# Worktrees e estado local do Claude Code — nunca versionar
+.claude/worktrees/
+.claude/settings.local.json
