@@ -1,8 +1,8 @@
 """GET /api/demographics.
 
-Filters: ageMin, ageMax, city, incomeMin, incomeMax, parentEducation, benefit.
-``sex`` is the axis of sexDistribution — it is accepted by the query DTO for
-symmetry with other charts but deliberately NOT applied here.
+Filters: ageMin, ageMax, city, incomeMin, incomeMax, parentEducation, benefit, sex.
+``sex`` is omitted by the sex-distribution chart (it is that chart's axis) but is
+applied for the other demographics charts (age, cities, maternities).
 Response: DemographicsResponse.
 """
 
@@ -29,6 +29,7 @@ def get_demographics(q: Annotated[DemographicsQuery, Query()]) -> DemographicsRe
             "incomeMax": q.incomeMax,
             "parentEducation": q.parentEducation,
             "benefit": q.benefit,
+            "sex": q.sex,
         },
     )
 
@@ -41,6 +42,7 @@ def get_demographics(q: Annotated[DemographicsQuery, Query()]) -> DemographicsRe
             incomeMax=q.incomeMax,
             parentEducation=q.parentEducation.value if q.parentEducation else None,
             benefit=q.benefit.value if q.benefit else None,
+            sex=q.sex.value if q.sex else None,
         )
         return DemographicsResponse(**demographics(df))
 

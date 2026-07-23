@@ -85,7 +85,11 @@ def apply_filters(
     Only non-``None`` arguments are applied. Callers should pass ``None`` for the
     axis being charted so a chart never filters itself out.
 
-    - ``incomeMin``/``incomeMax`` (reais) overlap-match the row's income bracket range.
+    - ``incomeMin``/``incomeMax`` (reais) are thresholds against each row's income
+      bracket (the TSV stores brackets, not exact reais). ``incomeMin`` keeps rows
+      whose bracket *floor* is >= the threshold; ``incomeMax`` keeps rows whose
+      bracket *ceiling* is <= the threshold. A floor above every known bracket
+      start (e.g. 200_000) therefore matches nobody.
     - ``parentEducation`` matches mother OR father.
     - ``therapy`` keeps rows whose normalized therapy list contains the key.
     """
@@ -101,12 +105,13 @@ def apply_filters(
         age = _col(data, "age")
         mask &= age.notna() & (age <= ageMax)
     if incomeMin is not None:
-        # keep rows whose bracket max is >= requested floor
-        income_max = _col(data, "income_max")
-        mask &= income_max.notna() & (income_max >= incomeMin)
-    if incomeMax is not None:
+        # Lower bound on the bracket floor (not the artificial open-top ceiling).
         income_min = _col(data, "income_min")
-        mask &= income_min.notna() & (income_min <= incomeMax)
+        mask &= income_min.notna() & (income_min >= incomeMin)
+    if incomeMax is not None:
+        # Upper bound: whole bracket must sit at or below the ceiling.
+        income_max = _col(data, "income_max")
+        mask &= income_max.notna() & (income_max <= incomeMax)
     if therapy is not None:
         key = therapy
         mask &= _col(data, "therapies").map(lambda ts: _list_contains(ts, key))

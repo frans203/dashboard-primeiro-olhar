@@ -44,7 +44,7 @@ MISSING_TOKENS = {"", "-", "–", "—"}
 #: Reference Brazilian minimum wage (in reais) used to translate the income
 #: brackets (expressed in "salários mínimos") into a numeric reais range so that
 #: the ``incomeMin`` / ``incomeMax`` filters (which are in reais) can be applied.
-MINIMUM_WAGE = 1412
+MINIMUM_WAGE = 1621
 
 # --------------------------------------------------------------------------- #
 # Normalized therapies vector — SINGLE SOURCE OF TRUTH
@@ -185,7 +185,9 @@ INCOME_BRACKETS: list[dict] = [
         "label": "Mais de 10 salários mínimos",
         "raw": {"mais de 10 salários mínimos.", "mais de 10 salários mínimos"},
         "min": 10 * MINIMUM_WAGE,
-        "max": 500_000,  # open top
+        # Open-top bracket: no observed ceiling. Sentinel is only used by
+        # ``incomeMax`` comparisons; ``incomeMin`` filters on ``min`` alone.
+        "max": 500_000,
         "order": 4,
     },
 ]

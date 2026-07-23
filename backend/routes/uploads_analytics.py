@@ -130,11 +130,20 @@ def run_on_upload(
 def upload_demographics(
     q: Annotated[UploadDemographicsQuery, Query()],
 ) -> DemographicsResponse:
-    # ``sex`` is the axis of sexDistribution — accepted, never applied.
+    # ``sex`` is omitted by the sex chart (its axis) but applied for age/cities/maternities.
     return run_on_upload(
         "uploads/demographics",
         q,
-        ("city", "ageMin", "ageMax", "incomeMin", "incomeMax", "parentEducation", "benefit"),
+        (
+            "city",
+            "ageMin",
+            "ageMax",
+            "incomeMin",
+            "incomeMax",
+            "parentEducation",
+            "benefit",
+            "sex",
+        ),
         demographics,
         DemographicsResponse,
     )
@@ -142,11 +151,20 @@ def upload_demographics(
 
 @router.get("/neonatal", response_model=NeonatalResponse)
 def upload_neonatal(q: Annotated[UploadNeonatalQuery, Query()]) -> NeonatalResponse:
-    # ``deliveryType`` and ``nicu`` are chart axes — not applied.
+    # ``deliveryType`` / ``nicu`` omitted by their axis charts; applied elsewhere.
     return run_on_upload(
         "uploads/neonatal",
         q,
-        ("city", "ageMin", "ageMax", "incomeMin", "incomeMax", "sex"),
+        (
+            "city",
+            "ageMin",
+            "ageMax",
+            "incomeMin",
+            "incomeMax",
+            "sex",
+            "deliveryType",
+            "nicu",
+        ),
         neonatal,
         NeonatalResponse,
     )
