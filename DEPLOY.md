@@ -1,113 +1,155 @@
-# Deploy
+# Deploy — tudo na Vercel (um projeto, dois serviços)
 
-Duas peças, dois lugares:
+Frontend e API no mesmo projeto Vercel, mesmo domínio. O `vercel.json` da raiz já
+declara os dois serviços e o roteamento:
 
-| Peça | Onde | Por quê |
+- `/api/...` → serviço **backend** (FastAPI, `main:app`)
+- todo o resto → serviço **frontend** (Vite)
+
+Como a API responde no mesmo domínio do site, **não existe CORS** nesse cenário e a
+`VITE_API_URL` fica **vazia** em produção (o cliente usa caminho relativo).
+
+> Alternativa, se um dia quiser sair da Vercel: o `backend/Dockerfile` e o `render.yaml`
+> continuam no repositório e funcionam sem alteração. Veja o apêndice no fim.
+
+---
+
+## O que é "Blob" e por que precisamos dele
+
+Blob = **armazenamento de arquivos** (object storage). Pense num HD na internet: você
+grava um arquivo com um nome (`institute/dados.tsv`), e depois lê pelo mesmo nome.
+É o equivalente Vercel do Amazon S3 — por baixo, é S3 mesmo.
+
+Precisamos dele por causa de uma característica da Vercel: **o servidor não tem disco
+nem memória permanentes**. Cada requisição pode ser atendida por uma cópia recém-criada
+da aplicação, que nasce sem nada além do código. Duas consequências diretas aqui:
+
+1. **O TSV do Instituto não tem onde morar.** Ele não está no Git (dado pessoal) e não
+   cabe em variável de ambiente (limite de 64 KB; o arquivo tem 203 KB).
+2. **O CSV que o usuário envia sumiria.** Hoje ele fica na memória do processo; na
+   Vercel, a requisição seguinte pode cair em outra cópia que nunca viu esse upload.
+
+O Blob resolve os dois: vira o "disco compartilhado" que todas as cópias enxergam.
+
+**Importante — crie o store como `private`:** em store público, qualquer um com a URL
+baixa o arquivo. Em privado, toda leitura exige o token, e quem entrega o conteúdo é a
+nossa API. Como o TSV tem nomes, endereços e dados de saúde de crianças, **privado não
+é opcional**.
+
+Custo: o plano Hobby inclui uma cota gratuita de armazenamento e operações. Nossos
+arquivos somam menos de 1 MB e as leituras são cacheadas — fica muito longe do limite.
+
+---
+
+## Ordem das coisas
+
+Você faz os passos 1 a 3, eu implemento e testo o código com o seu store real
+(passo 4), e aí fazemos o deploy juntos (5 a 7).
+
+### 1. Criar o Blob store (você)
+
+1. No painel da Vercel: **Storage → Create Database → Blob**.
+2. Nome: `primeiro-olhar-dados`. **Access mode: `Private`.** Region: escolha a mais
+   próxima (ex.: `gru1`, São Paulo).
+3. Em **Projects**, conecte o store ao projeto `dashboard-primeiro-olhar`. Isso faz a
+   Vercel injetar a variável `BLOB_READ_WRITE_TOKEN` no projeto automaticamente — você
+   não precisa copiar nada para lá.
+
+### 2. Subir o TSV para o store (você)
+
+No store criado, abra o **file browser** e faça upload do arquivo local
+`backend/data/Formulario2_Resumido.tsv` com o caminho:
+
+```
+institute/Formulario2_Resumido.tsv
+```
+
+Esse arquivo **nunca** passa pelo Git. É a única cópia em produção.
+
+### 3. Trazer o token para a sua máquina (você)
+
+Ainda no store, copie o `BLOB_READ_WRITE_TOKEN` (aba **.env.local** / **Quickstart**) e
+cole no seu `backend/.env` local:
+
+```bash
+BLOB_READ_WRITE_TOKEN=vercel_blob_rw_xxxxxxxx
+INSTITUTE_BLOB_PATH=institute/Formulario2_Resumido.tsv
+```
+
+O `backend/.env` está no `.gitignore` — o token não vai para o repositório. Ele serve
+para eu **testar a integração de verdade** antes de você fazer o deploy, em vez de
+mandar você subir código não testado.
+
+### 4. Implementação (eu)
+
+Com o store no ar, eu implemento e testo localmente:
+
+- `backend/blob_storage.py` — cliente do Blob (gravar, ler, listar, apagar).
+- `backend/cleaning.py` — o TSV do Instituto passa a ser lido do Blob quando
+  `BLOB_READ_WRITE_TOKEN` existe; continua lendo do disco no seu ambiente local sem
+  token, então nada muda no dia a dia.
+- `backend/uploaded_dataset.py` — o CSV enviado passa a ser gravado no Blob com um nome
+  único por envio (nunca sobrescrito, para não esbarrar no cache do CDN); o "atual" é o
+  mais recente. Cada cópia da aplicação baixa e limpa uma vez, e mantém em cache.
+- `backend/routes/uploads.py` — limite de upload cai de 10 MB para 4 MB (a Vercel
+  recusa corpos acima de ~4,5 MB).
+- Testes cobrindo o novo caminho.
+
+**Nada muda no frontend** e nenhuma tela muda de comportamento.
+
+### 5. Variáveis de ambiente na Vercel (você)
+
+No projeto → **Settings → Environment Variables**:
+
+| Variável | Valor | Observação |
 |---|---|---|
-| Frontend (Vite) | **Vercel** | build estático, encaixe perfeito e gratuito |
-| API (FastAPI) | **um processo que fica de pé** | o CSV enviado vive na memória do processo |
+| `BLOB_READ_WRITE_TOKEN` | *(automática)* | criada ao conectar o store no passo 1 |
+| `INSTITUTE_BLOB_PATH` | `institute/Formulario2_Resumido.tsv` | onde o TSV está no store |
+| `VITE_API_URL` | *(deixe em branco ou não crie)* | mesmo domínio → caminho relativo |
 
-## Por que a API não vai para a Vercel
+Não precisa de `ALLOWED_ORIGINS` nem de `DATA_PATH` na Vercel: o primeiro só importa
+quando front e API estão em domínios diferentes, e o segundo é o caminho em disco, usado
+localmente.
 
-Funções serverless são efêmeras e replicadas. O `POST /api/uploads` guarda o CSV na
-memória de **uma** instância; a requisição seguinte pode cair em outra, que responde
-"Nenhum CSV enviado". A tela **Analisar CSV** funcionaria de forma intermitente. Some
-a isso o limite de ~4,5 MB no corpo da requisição (nosso upload aceita 10 MB) e o
-cold start relendo o TSV a cada instância nova.
+### 6. Deploy (você)
 
-Por isso a API precisa de **um processo vivo e único**. O `backend/Dockerfile` é
-neutro: a mesma imagem roda em qualquer host abaixo.
+Na tela que você já abriu: **Root Directory `./`**, e Deploy. A Vercel lê o
+`vercel.json`, constrói os dois serviços e publica.
 
-> **Consequência aceita:** quando o host reinicia ou hiberna, o CSV enviado se perde
-> (é memória). Basta reenviar. Os dados do Instituto não dependem disso — vêm do TSV
-> em disco.
+### 7. Conferir (você)
 
-## O TSV do Instituto não está no repositório
+Com o site no ar:
 
-`backend/data/*.tsv` está no `.gitignore` — são nomes, endereços e dados de saúde de
-crianças. **Nenhum deploy que puxa do Git leva o arquivo.** Coloque-o no host por fora
-e aponte `DATA_PATH` para ele:
+1. `https://seu-projeto.vercel.app/api/indicators` → deve devolver
+   `"totalChildren": 355`. Se der erro de arquivo, o `INSTITUTE_BLOB_PATH` não bate com
+   o caminho que você usou no upload.
+2. Abra o site: as quatro abas do Instituto com gráficos preenchidos.
+3. Aba **Analisar CSV**: envie um arquivo, veja os números mudarem, **recarregue a
+   página** e confirme que os dados continuam lá — é isso que prova que o Blob está
+   funcionando (antes, o upload viveria só na memória de uma cópia).
 
-- **Render** → *Environment → Secret Files*: adicione `Formulario2_Resumido.tsv`
-  (vira `/etc/secrets/Formulario2_Resumido.tsv`) e defina
-  `DATA_PATH=/etc/secrets/Formulario2_Resumido.tsv`.
-- **Hugging Face Spaces** → suba o arquivo pela UI do Space (mantenha o Space
-  **privado**) em `data/` e use o `DATA_PATH` padrão do Dockerfile.
-- **VM** → copie via `scp` para um diretório e aponte `DATA_PATH` para ele.
+---
 
-Sem o arquivo no lugar certo, a API sobe e quebra no startup.
+## O que muda no seu dia a dia local
 
-## Onde hospedar a API: **Render, plano free**
+Nada. Sem `BLOB_READ_WRITE_TOKEN` no `.env`, o backend continua lendo o TSV do disco e
+guardando o CSV enviado em memória, exatamente como hoje:
 
-Decisão tomada, com o `render.yaml` na raiz pronto. Motivo: é o único gratuito que
-junta as quatro exigências — sem cartão, processo único de pé, **Secret Files** (o TSV
-entra sem passar pelo Git) e o nosso `Dockerfile` rodando sem alteração.
+```bash
+# backend
+uvicorn main:app --reload --port 8000
+# frontend
+npm run dev
+```
 
-O que foi descartado e por quê:
+Com o token presente, ele usa o Blob — útil para reproduzir produção quando precisar.
 
-| Host | Por que não |
-|---|---|
-| Hugging Face Spaces | para a Vercel chamar a API sem token o Space teria de ser **público** — e aí o TSV com dados das crianças ficaria baixável por qualquer um |
-| PythonAnywhere | web app grátis expira todo mês e o suporte a ASGI (FastAPI) é beta, sem preço definido |
-| Fly.io / Koyeb / Oracle | exigem cartão |
+---
 
-**A ressalva do Render free:** o serviço hiberna após ~15 min sem acesso e a primeira
-visita seguinte espera ~1 min. Se isso incomodar, aponte um monitor gratuito
-(UptimeRobot, cron-job.org) para `https://sua-api/` a cada 10 minutos: o serviço fica
-acordado e o consumo (~730 h/mês) cabe na cota de 750 h/mês do plano, desde que ele
-seja o único serviço free da conta.
+## Apêndice — alternativa fora da Vercel
 
-> Nenhum plano gratuito promete disponibilidade contratual. Se em algum momento a
-> queda de 1 min for inaceitável, o caminho barato é uma instância paga (~US$ 7/mês no
-> próprio Render, sem mudar nada do que está aqui).
-
-## Passo a passo
-
-### 1. API no Render
-
-1. Em [render.com](https://render.com), entre com a conta do GitHub e autorize o
-   repositório.
-2. **New → Blueprint**, aponte para o repositório e para a branch. O Render lê o
-   `render.yaml` e já cria o serviço `primeiro-olhar-api` (Docker, plano free).
-3. No serviço → **Environment → Secret Files** → **Add Secret File**:
-   - *Filename*: `Formulario2_Resumido.tsv`
-   - *Contents*: cole o conteúdo do arquivo local
-     (`backend/data/Formulario2_Resumido.tsv`)
-
-   Ele passa a existir em `/etc/secrets/Formulario2_Resumido.tsv`, que é para onde o
-   `DATA_PATH` do blueprint já aponta. **Isso não vai para o Git.**
-4. Ainda em **Environment**, preencha `ALLOWED_ORIGINS` com a URL da Vercel (passo 2
-   abaixo). Na primeira vez ela ainda não existe — deixe em branco, faça o frontend e
-   volte aqui. Sem isso o navegador bloqueia todas as chamadas.
-5. **Manual Deploy** e acompanhe o log até `Application startup complete`.
-6. Confira no navegador:
-   - `https://sua-api.onrender.com/` → `{"service":"primeiro-olhar-dashboard","status":"ok"}`
-   - `https://sua-api.onrender.com/api/indicators` → deve trazer `totalChildren: 355`
-
-   Se o segundo falhar com erro de arquivo, o Secret File está com nome diferente do
-   que o `DATA_PATH` espera.
-
-### 2. Frontend na Vercel
-
-1. Na Vercel: **New Project** → importe o repositório → **Root Directory: `frontend`**
-   (o `vercel.json` já define framework, build e o rewrite de SPA).
-2. Variável de ambiente: `VITE_API_URL=https://sua-api.onrender.com` (sem barra no fim).
-3. Deploy. Se mudar a URL da API depois, **refaça o build** — o Vite injeta a variável
-   em build time, não em runtime.
-
-### 3. Fechar o círculo
-
-Volte ao Render e coloque a URL da Vercel em `ALLOWED_ORIGINS` (o serviço reinicia
-sozinho). Se usar previews da Vercel, inclua as URLs delas também, separadas por
-vírgula — cada preview tem domínio próprio.
-
-Teste final: abra o site, veja as quatro abas do Instituto com dados, e envie um CSV
-na aba **Analisar CSV**.
-
-## Verificação já feita localmente
-
-A imagem foi construída e executada aqui simulando o Render (`DATA_PATH` apontando
-para um arquivo montado em `/etc/secrets/`, `PORT` injetado, `ALLOWED_ORIGINS` com um
-domínio de exemplo). Resultado: `/api/indicators` com os 355 registros do Instituto,
-CORS liberando só a origem configurada, e o upload de CSV funcionando dentro do
-contêiner. Imagem final: ~471 MB.
+Se algum dia a Vercel não servir, o repositório já tem `backend/Dockerfile` e
+`render.yaml`. Nesse cenário o backend roda como processo único e **não precisa de
+Blob**: o TSV vai como *Secret File* (`DATA_PATH=/etc/secrets/...`) e o CSV enviado
+volta a viver em memória. Aí o front na Vercel precisa de `VITE_API_URL` apontando para
+a API e a API precisa de `ALLOWED_ORIGINS` com a URL do front.
