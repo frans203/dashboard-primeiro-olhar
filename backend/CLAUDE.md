@@ -29,7 +29,8 @@ Interactive docs at `http://localhost:8000/docs`.
 | `enums.py` | Strict validation enums. Keys in **English**, mapped to the pt-BR file values in `cleaning`. `Therapy` is **built at import from the cleaning vector**; `City` is validated against the known-cities set. |
 | `dtos.py` | Pydantic DTOs: one **query** model per route (pertinent filter subset, all optional) + **response** models for every route (defined even for the not-yet-implemented ones). |
 | `cleaning.py` | **The critical layer.** Reads the TSV, normalizes dirty data, exposes the cleaned `DataFrame` (`get_clean_df`) and the **normalized therapies vector** (`therapies_vector`). Reading and cleaning are separate: `build_clean_df(raw)` cleans any raw frame, `read_tabular(bytes)` parses an uploaded CSV/TSV, `REQUIRED_COLUMNS`/`missing_columns` gate it. |
-| `uploaded_dataset.py` | The **replaceable** dataset: one in-memory slot for the uploaded CSV + its own `upload_cache`, versioned. |
+| `uploaded_dataset.py` | The **replaceable** dataset: the uploaded CSV + its own `upload_cache`, versioned. Two backends — in-memory slot, or Blob (one immutable object per upload, newest wins). |
+| `blob_storage.py` | The only module that talks to Vercel Blob (official `vercel` SDK, **private** access). Optional: `enabled()` is False without a token and everything falls back to disk/memory. |
 | `analytics.py` | Pandas aggregations & crossings. `apply_filters` (the shared filter engine) takes an optional `df`, which is what lets the uploaded dataset reuse every aggregation unchanged. |
 | `cache.py` | In-memory cache of aggregates (static data → deterministic per filter combo). `lru_cache` for no-param aggregates; `AggregateCache` dict (keyed via `make_key`) for the rest. |
 | `routes/` | **One route per file** for the institute dataset. The uploaded one adds `uploads.py` (lifecycle) and `uploads_analytics.py` (the 10 mirror aggregates, one shared body). |
@@ -56,9 +57,42 @@ Interactive docs at `http://localhost:8000/docs`.
 - **`city` is validated against the UPLOADED file's cities**, in the route (a Pydantic
   field validator cannot know which dataset is loaded) → 422 for an unknown one. The
   `Upload*Query` DTOs therefore mirror their twins with a plain `city` field.
-- **Scope**: one process-wide slot, unauthenticated — everyone sees the last CSV
-  uploaded. To make it per-user, turn `_current` into a dict keyed by an id returned
-  from the upload route; the rest of the design is unaffected.
+- **Scope**: one dataset for everyone, unauthenticated — the last CSV uploaded wins. To
+  make it per-user, key the storage by a session id handed to the browser and thread it
+  through the mirror routes; the rest of the design is unaffected.
+- **Where it is stored**: in memory (single process) or, with a Blob token, as one
+  **immutable** object per upload under `uploads/`. Never overwriting a pathname is what
+  keeps the CDN from serving a stale version; "current" is simply the newest object, and
+  the version comes from the store's own timestamp so every instance computes the same
+  number. Uploading on a serverless host without Blob would appear to work and then lose
+  the data on the next request — that is why `main` logs a warning when it detects
+  Vercel without a token.
+
+## Storage & environment
+
+Nothing is required to run locally: with no variables set, the TSV comes from disk and
+the uploaded CSV lives in memory. The variables exist for hosts that have neither.
+
+| Variable | Effect |
+|---|---|
+| `BLOB_READ_WRITE_TOKEN` | Turns the Blob backend on (`blob_storage.enabled()`). The SDK accepts `VERCEL_BLOB_READ_WRITE_TOKEN` too and does **not** fall back to OIDC — one of them must be in the environment. |
+| `INSTITUTE_BLOB_PATH` | Where the institute's TSV lives in the store. |
+| `DATA_PATH` | Where the institute's TSV lives on disk. |
+| `ALLOWED_ORIGINS` | CORS origins, comma-separated. Irrelevant when the frontend is served from the same domain. |
+| `PORT` | HTTP port; hosts usually inject it. |
+
+`backend/.env` is loaded by `main.py` (python-dotenv) for local convenience and is
+gitignored. The test suite blanks the Blob variables in `conftest.py` so it never hits
+the network; `tests/test_blob_storage.py` opts back in when a real token is present.
+
+**The source is chosen by intent, never by silent fallback.** Setting
+`INSTITUTE_BLOB_PATH` means "this file is in Blob": a missing token then raises
+`DatasetUnavailable` naming what is absent, instead of reading a disk that (on Vercel)
+will never have the file. `main` maps `DatasetUnavailable`/`BlobUnavailable` to **503
+with that message**, and the lifespan warm-up never crashes the process — a
+configuration mistake must be a readable HTTP answer, and `/api/uploads/*` keeps working
+regardless. This exists because the first deploy died with a `FileNotFoundError` deep
+inside pandas.
 
 ## Conventions
 
