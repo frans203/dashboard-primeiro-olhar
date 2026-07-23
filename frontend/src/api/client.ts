@@ -6,14 +6,10 @@
  * - `getJson` fetches and validates the response against a Zod schema at the boundary,
  *   so everything past this point is typed and trusted.
  *
- * The base URL is empty in dev (Vite proxies `/api` to the backend). Set
- * `VITE_API_URL` (or `VITE_API_BASE_URL`) for builds pointing at another origin.
+ * The base URL comes from `VITE_API_URL` (`VITE_API_BASE_URL` is an alias) — see
+ * `.env.example`. Leave it empty to go through the Vite proxy (`/api` → :8000 in dev).
  */
 import type { ZodType } from "zod";
-
-// ─── MOCK DE DEMONSTRAÇÃO (temporário) — apagar junto com `src/api/mock/` ───
-import { mockGet, USE_MOCK_API } from "@/api/mock";
-// ───────────────────────────────────────────────────────────────────────────
 
 const BASE_URL =
   import.meta.env.VITE_API_URL ?? import.meta.env.VITE_API_BASE_URL ?? "";
@@ -31,22 +27,67 @@ export function buildQuery(params: Record<string, unknown>): string {
   return qs ? `?${qs}` : "";
 }
 
-export async function getJson<T>(path: string, schema: ZodType<T>): Promise<T> {
-  // ─── MOCK DE DEMONSTRAÇÃO (temporário) — apagar este bloco inteiro ───
-  // Valida com o mesmo schema dos dados reais; rota não mockada cai na API.
-  if (USE_MOCK_API) {
-    const mocked = await mockGet(path);
-    if (mocked !== null) return schema.parse(mocked);
+/**
+ * An HTTP error carrying the API's message. FastAPI puts it in `detail`, and for the
+ * upload route that message is written to be shown to the reader as-is (pt-BR: which
+ * columns are missing, why the file was refused).
+ */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
   }
-  // ─────────────────────────────────────────────────────────────────────
+}
 
+async function readError(res: Response, fallback: string): Promise<ApiError> {
+  try {
+    const body = await res.json();
+    const detail = (body as { detail?: unknown })?.detail;
+    if (typeof detail === "string" && detail) return new ApiError(res.status, detail);
+  } catch {
+    // non-JSON body → fall through to the generic message
+  }
+  return new ApiError(res.status, fallback);
+}
+
+export async function getJson<T>(path: string, schema: ZodType<T>): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) {
-    throw new Error(`Request failed: ${res.status} ${res.statusText} — ${path}`);
+    throw await readError(res, `Request failed: ${res.status} ${res.statusText} — ${path}`);
   }
   const json = await res.json();
   // Validate at the boundary; a schema mismatch surfaces as a query error.
   return schema.parse(json);
+}
+
+/** POST a file as multipart/form-data, validating the response at the same boundary. */
+export async function postFile<T>(
+  path: string,
+  file: File,
+  schema: ZodType<T>,
+  field = "file",
+): Promise<T> {
+  const body = new FormData();
+  body.append(field, file);
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+    body, // no Content-Type: the browser sets it with the multipart boundary
+  });
+  if (!res.ok) {
+    throw await readError(res, "Não foi possível enviar o arquivo.");
+  }
+  return schema.parse(await res.json());
+}
+
+export async function del(path: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}${path}`, { method: "DELETE" });
+  if (!res.ok) {
+    throw await readError(res, `Request failed: ${res.status} ${res.statusText} — ${path}`);
+  }
 }

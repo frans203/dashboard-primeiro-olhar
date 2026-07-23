@@ -3,14 +3,8 @@
 React + Vite + TypeScript dashboard that consumes the FastAPI backend and renders
 **charts, tables and indicator cards with per-chart filters**. Mobile-first, responsive.
 
-> ## ⚠️ MOCK DE DEMONSTRAÇÃO LIGADO
->
-> O app está servindo **dados fictícios** (`src/api/mock/`), não os do Instituto — foi
-> ligado para gravar um vídeo sem depender do backend, que ainda responde 501 em quase
-> tudo. As respostas falsas passam pelo mesmo Zod das reais.
->
-> **Desligar:** `USE_MOCK_API = false` em `src/api/mock/index.ts`.
-> **Remover:** apague `src/api/mock/` + o bloco "MOCK DE DEMONSTRAÇÃO" em `api/client.ts`.
+Todas as telas leem a **API real** — o mock de demonstração que existia em
+`src/api/mock/` foi removido.
 
 ## Run
 
@@ -46,6 +40,23 @@ Three responsibilities, three homes:
 TanStack Query key (`api/endpoints.ts` → `queryKeys`). Change a filter → new key →
 automatic refetch + per-combination caching. Do not manually refetch.
 
+### Two datasets, zero chart changes (`stores/dataSourceContext.tsx`)
+
+The API serves the institute's TSV under `/api` and the uploaded CSV under
+`/api/uploads` — identical routes and shapes. `DataSourceProvider` says which one a
+subtree reads; **every query hook reads that context itself** and passes it to the
+fetcher (path prefix) and to the key (scope + upload `version`). So a chart component
+never mentions the dataset, and the "Analisar CSV" page reuses all 18 charts verbatim
+just by wrapping them.
+
+The upload `version` inside the key is what makes a replacement file refresh the
+screen: new version → new keys → refetch. Never `invalidateQueries` for this.
+
+The loaded CSV's metadata is server state like any other (`hooks/useUploadStatus.ts`),
+which is also how the page recovers after a reload. `api/client.ts` grew `postFile`/`del` plus `ApiError`, which carries the API's
+pt-BR `detail` — the upload card shows that message as-is (e.g. which columns are
+missing).
+
 **One route, one pertinent subset.** `ROUTE_FILTERS` (`api/endpoints.ts`) mirrors the
 query DTOs in `backend/dtos.py` — exactly what each route accepts. `pickRouteFilters`
 narrows a chart's filters to that subset and the SAME narrowed object builds the key and
@@ -80,7 +91,7 @@ and a missing label becomes a type error rather than an absent option.
 
 `components/ui-kit/` holds the brand presentation components: `PrimaryButton`,
 `SecondaryButton`, `Dropdown`, `SelectFilterField` / `NumberFilterField`, `Card`,
-`IndicatorCard`. **Always build UI from these — never style raw elements ad hoc.**
+`IndicatorCard`, `TabsBar`. **Always build UI from these — never style raw elements ad hoc.**
 
 Every ui-kit component follows one contract:
 - encapsulates the base identity style;
@@ -106,8 +117,17 @@ Two more shared pieces sit on top of them, and a chart should never re-do their 
 `analytics.py` — so `formatRate` percent-formats them; a missing average renders `EMPTY`
 ("—") and never `0`.
 
+`TabsBar` is the horizontal tablist of the "Analisar CSV" page — hand-built (no Radix
+dep for one tablist), with roving tabindex, ←/→/Home/End, ~44px targets and horizontal
+scroll on mobile. It reports the selection; the caller renders the `role="tabpanel"`.
+
 The concrete chart instances live in per-page folders: `charts/demographics`,
 `charts/health`, `charts/socioeconomic`, `charts/crossings`.
+
+**Chart grids live in `pages/sections/`**, not in the pages. Each page is
+`PageHeader + <Section />`, and the "Analisar CSV" tabs render those same sections over
+the uploaded dataset — one definition of each grid, two places it appears. Add a chart
+to a section, not to a page.
 
 ## Visual identity & layout
 
@@ -133,8 +153,8 @@ The concrete chart instances live in per-page folders: `charts/demographics`,
   and tab labels (`layout/Sidebar.tsx` → `DesktopSidebar`); mobile = collapsed bar with
   a `Menu` button opening a shadcn Sheet drawer that closes on selection (`MobileNav`).
   Tabs & icons: Demografia `Users`, Saúde `HeartPulse`, Socioeconômico `Wallet`,
-  Cruzamentos `GitCompare`. Active tab is highlighted. Routing is lightweight page
-  state in `layout/AppShell.tsx` (no router dependency).
+  Cruzamentos `GitCompare`, Analisar CSV `FileUp`. Active tab is highlighted. Routing is
+  lightweight page state in `layout/AppShell.tsx` (no router dependency).
 
 ## Adding a new chart (use the molde)
 

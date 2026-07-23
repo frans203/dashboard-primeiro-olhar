@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { fetchDemographics, queryKeys } from "@/api/endpoints";
 import type { DropdownOption } from "@/components/ui-kit";
+import { useDataSource } from "@/stores/dataSourceContext";
 
 /**
  * City options for the `city` filter — SHARED SERVER STATE, like the therapy list, so
@@ -18,13 +19,18 @@ import type { DropdownOption } from "@/components/ui-kit";
  *
  * While `/api/demographics` is unimplemented this query errors; the filter bar then
  * renders the city dropdown disabled instead of breaking (see `ChartFilterBar`).
+ *
+ * It follows the ACTIVE dataset like every other hook: on the "Analisar CSV" page the
+ * options are the uploaded file's cities — which is also what the API validates `city`
+ * against there.
  */
 const AGGREGATE_BUCKET = /^outr[ao]s$/i;
 
 export function useCities() {
+  const source = useDataSource();
   return useQuery({
-    queryKey: queryKeys.demographics({}),
-    queryFn: () => fetchDemographics({}),
+    queryKey: queryKeys.demographics({}, source),
+    queryFn: () => fetchDemographics({}, source),
     staleTime: Infinity,
     gcTime: Infinity,
     select: (data): DropdownOption[] =>

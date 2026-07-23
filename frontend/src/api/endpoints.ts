@@ -13,24 +13,55 @@
  * 2. **Filters are validated before serialization** (`toQuery` → `filtersSchema`), so a
  *    bad value surfaces as a query error instead of a malformed request.
  */
-import { buildQuery, getJson } from "@/api/client";
+import { buildQuery, del, getJson, postFile } from "@/api/client";
 import * as S from "@/api/schemas";
+import type { DataSource } from "@/stores/dataSourceContext";
 import type { FilterKey, Filters } from "@/types/filters";
+
+/**
+ * Two datasets, one API surface: the institute's fixed TSV under `/api`, and the
+ * uploaded CSV under `/api/uploads` — identical routes, DTOs and filters (see
+ * `backend/routes/uploads_analytics.py`). Every fetcher takes the active `DataSource`
+ * and only the prefix changes.
+ */
+const INSTITUTE_SOURCE: DataSource = { name: "institute" };
+
+function base(source: DataSource = INSTITUTE_SOURCE): string {
+  return source.name === "upload" ? "/api/uploads" : "/api";
+}
+
+/**
+ * Source scope for a query key. The upload's `version` is in there, so replacing the
+ * CSV re-keys every chart and TanStack Query refetches by itself.
+ */
+function scope(source: DataSource = INSTITUTE_SOURCE) {
+  return source.name === "upload"
+    ? (["upload", source.version ?? 0] as const)
+    : (["institute"] as const);
+}
 
 /** Central query-key registry (keeps keys consistent across hooks). */
 export const queryKeys = {
   therapiesFilter: ["filters", "therapies"] as const,
-  demographics: (f: Partial<Filters>) => ["demographics", f] as const,
-  neonatal: (f: Partial<Filters>) => ["neonatal", f] as const,
-  diagnosis: (f: Partial<Filters>) => ["diagnosis", f] as const,
-  health: (f: Partial<Filters>) => ["health", f] as const,
-  therapies: (f: Partial<Filters>) => ["therapies", f] as const,
-  socioeconomic: (f: Partial<Filters>) => ["socioeconomic", f] as const,
-  incomeTherapies: (f: Partial<Filters>) => ["crossings", "income-therapies", f] as const,
-  deliveryComplications: (f: Partial<Filters>) =>
-    ["crossings", "delivery-complications", f] as const,
-  bpcIncome: (f: Partial<Filters>) => ["crossings", "bpc-income", f] as const,
-  indicators: (f: Partial<Filters>) => ["indicators", f] as const,
+  uploadStatus: ["uploads", "current"] as const,
+  demographics: (f: Partial<Filters>, s?: DataSource) =>
+    [...scope(s), "demographics", f] as const,
+  neonatal: (f: Partial<Filters>, s?: DataSource) => [...scope(s), "neonatal", f] as const,
+  diagnosis: (f: Partial<Filters>, s?: DataSource) =>
+    [...scope(s), "diagnosis", f] as const,
+  health: (f: Partial<Filters>, s?: DataSource) => [...scope(s), "health", f] as const,
+  therapies: (f: Partial<Filters>, s?: DataSource) =>
+    [...scope(s), "therapies", f] as const,
+  socioeconomic: (f: Partial<Filters>, s?: DataSource) =>
+    [...scope(s), "socioeconomic", f] as const,
+  incomeTherapies: (f: Partial<Filters>, s?: DataSource) =>
+    [...scope(s), "crossings", "income-therapies", f] as const,
+  deliveryComplications: (f: Partial<Filters>, s?: DataSource) =>
+    [...scope(s), "crossings", "delivery-complications", f] as const,
+  bpcIncome: (f: Partial<Filters>, s?: DataSource) =>
+    [...scope(s), "crossings", "bpc-income", f] as const,
+  indicators: (f: Partial<Filters>, s?: DataSource) =>
+    [...scope(s), "indicators", f] as const,
 };
 
 /**
@@ -119,60 +150,103 @@ function toQuery(filters: Partial<Filters>): string {
 
 // --- reference data -------------------------------------------------------- //
 
+/** Therapy options come from the canonical vector, identical for both datasets. */
 export function fetchTherapiesFilter(): Promise<S.TherapiesFilterResponse> {
   return getJson("/api/filters/therapies", S.therapiesFilterResponse);
 }
 
 // --- aggregates ------------------------------------------------------------ //
 
-export function fetchDemographics(f: Partial<Filters>): Promise<S.DemographicsResponse> {
-  return getJson(`/api/demographics${toQuery(f)}`, S.demographicsResponse);
+export function fetchDemographics(
+  f: Partial<Filters>,
+  s?: DataSource,
+): Promise<S.DemographicsResponse> {
+  return getJson(`${base(s)}/demographics${toQuery(f)}`, S.demographicsResponse);
 }
 
-export function fetchNeonatal(f: Partial<Filters>): Promise<S.NeonatalResponse> {
-  return getJson(`/api/neonatal${toQuery(f)}`, S.neonatalResponse);
+export function fetchNeonatal(
+  f: Partial<Filters>,
+  s?: DataSource,
+): Promise<S.NeonatalResponse> {
+  return getJson(`${base(s)}/neonatal${toQuery(f)}`, S.neonatalResponse);
 }
 
-export function fetchDiagnosis(f: Partial<Filters>): Promise<S.DiagnosisResponse> {
-  return getJson(`/api/diagnosis${toQuery(f)}`, S.diagnosisResponse);
+export function fetchDiagnosis(
+  f: Partial<Filters>,
+  s?: DataSource,
+): Promise<S.DiagnosisResponse> {
+  return getJson(`${base(s)}/diagnosis${toQuery(f)}`, S.diagnosisResponse);
 }
 
-export function fetchHealth(f: Partial<Filters>): Promise<S.HealthResponse> {
-  return getJson(`/api/health${toQuery(f)}`, S.healthResponse);
+export function fetchHealth(
+  f: Partial<Filters>,
+  s?: DataSource,
+): Promise<S.HealthResponse> {
+  return getJson(`${base(s)}/health${toQuery(f)}`, S.healthResponse);
 }
 
-export function fetchTherapies(f: Partial<Filters>): Promise<S.TherapiesResponse> {
-  return getJson(`/api/therapies${toQuery(f)}`, S.therapiesResponse);
+export function fetchTherapies(
+  f: Partial<Filters>,
+  s?: DataSource,
+): Promise<S.TherapiesResponse> {
+  return getJson(`${base(s)}/therapies${toQuery(f)}`, S.therapiesResponse);
 }
 
-export function fetchSocioeconomic(f: Partial<Filters>): Promise<S.SocioeconomicResponse> {
-  return getJson(`/api/socioeconomic${toQuery(f)}`, S.socioeconomicResponse);
+export function fetchSocioeconomic(
+  f: Partial<Filters>,
+  s?: DataSource,
+): Promise<S.SocioeconomicResponse> {
+  return getJson(`${base(s)}/socioeconomic${toQuery(f)}`, S.socioeconomicResponse);
 }
 
-export function fetchIndicators(f: Partial<Filters>): Promise<S.IndicatorsResponse> {
-  return getJson(`/api/indicators${toQuery(f)}`, S.indicatorsResponse);
+export function fetchIndicators(
+  f: Partial<Filters>,
+  s?: DataSource,
+): Promise<S.IndicatorsResponse> {
+  return getJson(`${base(s)}/indicators${toQuery(f)}`, S.indicatorsResponse);
 }
 
 // --- crossings ------------------------------------------------------------- //
 
 export function fetchIncomeTherapies(
   f: Partial<Filters>,
+  s?: DataSource,
 ): Promise<S.IncomeTherapiesResponse> {
   return getJson(
-    `/api/crossings/income-therapies${toQuery(f)}`,
+    `${base(s)}/crossings/income-therapies${toQuery(f)}`,
     S.incomeTherapiesResponse,
   );
 }
 
 export function fetchDeliveryComplications(
   f: Partial<Filters>,
+  s?: DataSource,
 ): Promise<S.DeliveryComplicationsResponse> {
   return getJson(
-    `/api/crossings/delivery-complications${toQuery(f)}`,
+    `${base(s)}/crossings/delivery-complications${toQuery(f)}`,
     S.deliveryComplicationsResponse,
   );
 }
 
-export function fetchBpcIncome(f: Partial<Filters>): Promise<S.BpcIncomeResponse> {
-  return getJson(`/api/crossings/bpc-income${toQuery(f)}`, S.bpcIncomeResponse);
+export function fetchBpcIncome(
+  f: Partial<Filters>,
+  s?: DataSource,
+): Promise<S.BpcIncomeResponse> {
+  return getJson(`${base(s)}/crossings/bpc-income${toQuery(f)}`, S.bpcIncomeResponse);
+}
+
+// --- uploaded dataset lifecycle -------------------------------------------- //
+
+/** Send a CSV/TSV; it REPLACES whatever was loaded before. */
+export function uploadDataset(file: File): Promise<S.UploadStatusResponse> {
+  return postFile("/api/uploads", file, S.uploadStatusResponse);
+}
+
+/** Metadata of the loaded CSV — 404 (an `ApiError`) when there is none. */
+export function fetchUploadStatus(): Promise<S.UploadStatusResponse> {
+  return getJson("/api/uploads/current", S.uploadStatusResponse);
+}
+
+export function deleteUploadedDataset(): Promise<void> {
+  return del("/api/uploads/current");
 }

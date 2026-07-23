@@ -16,6 +16,8 @@ from routes import (
     neonatal,
     socioeconomic,
     therapies,
+    uploads,
+    uploads_analytics,
 )
 
 all_routers = [
@@ -30,4 +32,7 @@ all_routers = [
     crossings_delivery_complications.router,
     crossings_bpc_income.router,
     indicators.router,
+    # Uploaded CSV: lifecycle + the same aggregates over the replaceable dataset.
+    uploads.router,
+    uploads_analytics.router,
 ]

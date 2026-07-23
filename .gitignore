@@ -3,6 +3,12 @@ backend/data/*.tsv
 backend/data/*.csv
 backend/data/*.xlsx
 
+# Variáveis de ambiente: o .env é de cada máquina; o .env.example é versionado
+# (é ele que documenta as chaves), por isso a exceção logo abaixo.
+.env
+.env.*
+!.env.example
+
 # Python
 .venv/
 __pycache__/

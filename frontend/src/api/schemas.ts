@@ -165,3 +165,14 @@ export const indicatorsResponse = z.object({
   totalChildren: z.number(),
 });
 export type IndicatorsResponse = z.infer<typeof indicatorsResponse>;
+
+// --- /api/uploads (the uploaded CSV slot) --------------------------------- //
+/** Metadata of the CSV currently loaded — mirrors `UploadStatusResponse` in the API. */
+export const uploadStatusResponse = z.object({
+  filename: z.string(),
+  rowCount: z.number(),
+  uploadedAt: z.string(),
+  version: z.number(),
+  warnings: z.array(z.string()),
+});
+export type UploadStatusResponse = z.infer<typeof uploadStatusResponse>;
