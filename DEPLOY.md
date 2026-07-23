@@ -37,45 +37,77 @@ e aponte `DATA_PATH` para ele:
 
 Sem o arquivo no lugar certo, a API sobe e quebra no startup.
 
-## Onde hospedar a API (grátis)
+## Onde hospedar a API: **Render, plano free**
 
-Termos de tier gratuito mudam com frequência — confirme antes de escolher.
+Decisão tomada, com o `render.yaml` na raiz pronto. Motivo: é o único gratuito que
+junta as quatro exigências — sem cartão, processo único de pé, **Secret Files** (o TSV
+entra sem passar pelo Git) e o nosso `Dockerfile` rodando sem alteração.
 
-| Host | Fica de pé? | Cartão? | Observação |
-|---|---|---|---|
-| **Hugging Face Spaces** (Docker) | hiberna só após ~48 h sem acesso | não | RAM folgada; deixe o Space privado |
-| **Render** (free web service) | hiberna após ~15 min ociosa, acorda em ~1 min | não | caminho mais convencional; tem *Secret Files* |
-| **Fly.io / Koyeb** | máquina para e acorda sob demanda | sim | acordar é rápido (~1-2 s) |
-| **Oracle Cloud Always Free** (VM) | 24/7 de verdade | sim (verificação) | você administra a VM |
+O que foi descartado e por quê:
 
-Para "não cai e é de graça", **Hugging Face Spaces** é o que mais se aproxima;
-**Render** é o mais convencional se a hibernação de 15 min for tolerável.
+| Host | Por que não |
+|---|---|
+| Hugging Face Spaces | para a Vercel chamar a API sem token o Space teria de ser **público** — e aí o TSV com dados das crianças ficaria baixável por qualquer um |
+| PythonAnywhere | web app grátis expira todo mês e o suporte a ASGI (FastAPI) é beta, sem preço definido |
+| Fly.io / Koyeb / Oracle | exigem cartão |
+
+**A ressalva do Render free:** o serviço hiberna após ~15 min sem acesso e a primeira
+visita seguinte espera ~1 min. Se isso incomodar, aponte um monitor gratuito
+(UptimeRobot, cron-job.org) para `https://sua-api/` a cada 10 minutos: o serviço fica
+acordado e o consumo (~730 h/mês) cabe na cota de 750 h/mês do plano, desde que ele
+seja o único serviço free da conta.
+
+> Nenhum plano gratuito promete disponibilidade contratual. Se em algum momento a
+> queda de 1 min for inaceitável, o caminho barato é uma instância paga (~US$ 7/mês no
+> próprio Render, sem mudar nada do que está aqui).
 
 ## Passo a passo
 
-### 1. API
+### 1. API no Render
 
-1. Suba o repositório no GitHub (o TSV **não** vai junto — confira com
-   `git ls-files backend/data`, que deve mostrar só o `.gitkeep`).
-2. No host, crie um serviço apontando para `backend/` usando o `Dockerfile`.
-3. Coloque o TSV no host e configure as variáveis:
-   - `DATA_PATH` → caminho do arquivo no host
-   - `ALLOWED_ORIGINS` → a URL do frontend na Vercel (ex.:
-     `https://seu-projeto.vercel.app`) — **sem isso o navegador bloqueia tudo**
-   - `PORT` → normalmente o host injeta sozinho
-4. Confira: `GET https://sua-api/` deve responder
-   `{"service":"primeiro-olhar-dashboard","status":"ok"}` e `GET /api/indicators`
-   deve trazer `totalChildren`.
+1. Em [render.com](https://render.com), entre com a conta do GitHub e autorize o
+   repositório.
+2. **New → Blueprint**, aponte para o repositório e para a branch. O Render lê o
+   `render.yaml` e já cria o serviço `primeiro-olhar-api` (Docker, plano free).
+3. No serviço → **Environment → Secret Files** → **Add Secret File**:
+   - *Filename*: `Formulario2_Resumido.tsv`
+   - *Contents*: cole o conteúdo do arquivo local
+     (`backend/data/Formulario2_Resumido.tsv`)
 
-### 2. Frontend
+   Ele passa a existir em `/etc/secrets/Formulario2_Resumido.tsv`, que é para onde o
+   `DATA_PATH` do blueprint já aponta. **Isso não vai para o Git.**
+4. Ainda em **Environment**, preencha `ALLOWED_ORIGINS` com a URL da Vercel (passo 2
+   abaixo). Na primeira vez ela ainda não existe — deixe em branco, faça o frontend e
+   volte aqui. Sem isso o navegador bloqueia todas as chamadas.
+5. **Manual Deploy** e acompanhe o log até `Application startup complete`.
+6. Confira no navegador:
+   - `https://sua-api.onrender.com/` → `{"service":"primeiro-olhar-dashboard","status":"ok"}`
+   - `https://sua-api.onrender.com/api/indicators` → deve trazer `totalChildren: 355`
+
+   Se o segundo falhar com erro de arquivo, o Secret File está com nome diferente do
+   que o `DATA_PATH` espera.
+
+### 2. Frontend na Vercel
 
 1. Na Vercel: **New Project** → importe o repositório → **Root Directory: `frontend`**
    (o `vercel.json` já define framework, build e o rewrite de SPA).
-2. Variável de ambiente: `VITE_API_URL=https://sua-api` (sem barra no fim).
+2. Variável de ambiente: `VITE_API_URL=https://sua-api.onrender.com` (sem barra no fim).
 3. Deploy. Se mudar a URL da API depois, **refaça o build** — o Vite injeta a variável
    em build time, não em runtime.
 
 ### 3. Fechar o círculo
 
-A URL definitiva da Vercel precisa estar em `ALLOWED_ORIGINS` na API. Se você alterar
-o domínio (ou usar previews), inclua-os também — cada preview tem uma URL própria.
+Volte ao Render e coloque a URL da Vercel em `ALLOWED_ORIGINS` (o serviço reinicia
+sozinho). Se usar previews da Vercel, inclua as URLs delas também, separadas por
+vírgula — cada preview tem domínio próprio.
+
+Teste final: abra o site, veja as quatro abas do Instituto com dados, e envie um CSV
+na aba **Analisar CSV**.
+
+## Verificação já feita localmente
+
+A imagem foi construída e executada aqui simulando o Render (`DATA_PATH` apontando
+para um arquivo montado em `/etc/secrets/`, `PORT` injetado, `ALLOWED_ORIGINS` com um
+domínio de exemplo). Resultado: `/api/indicators` com os 355 registros do Instituto,
+CORS liberando só a origem configurada, e o upload de CSV funcionando dentro do
+contêiner. Imagem final: ~471 MB.
