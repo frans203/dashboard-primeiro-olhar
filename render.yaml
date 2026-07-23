@@ -1,0 +1,22 @@
+# Blueprint do Render para a API (o frontend fica na Vercel — veja DEPLOY.md).
+#
+# O TSV do Instituto NÃO está no repositório (dado pessoal). Ele é enviado pelo painel
+# do Render em Environment → Secret Files, com o nome Formulario2_Resumido.tsv, e o
+# serviço o encontra em /etc/secrets/ pelo DATA_PATH abaixo.
+services:
+  - type: web
+    name: primeiro-olhar-api
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    # O Render considera o serviço saudável quando esta rota responde 200.
+    healthCheckPath: /
+    envVars:
+      # Preenchido no painel: a URL do frontend na Vercel (sem barra no fim).
+      # Sem isso o navegador bloqueia todas as chamadas por CORS.
+      - key: ALLOWED_ORIGINS
+        sync: false
+      # Onde o Render monta os Secret Files.
+      - key: DATA_PATH
+        value: /etc/secrets/Formulario2_Resumido.tsv

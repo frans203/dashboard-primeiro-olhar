@@ -1,8 +1,8 @@
 """Upload lifecycle: POST a CSV, read its status, drop it.
 
-``POST /api/uploads`` replaces the single uploaded-dataset slot (see
-:mod:`uploaded_dataset`); the aggregates over it are served by the mirror routes in
-:mod:`routes.uploads_analytics`.
+``POST /api/uploads`` replaces the current uploaded dataset (see
+:mod:`uploaded_dataset`, which stores it in memory or in Vercel Blob); the aggregates
+over it are served by the mirror routes in :mod:`routes.uploads_analytics`.
 
 This is the only non-GET surface in the service, so the rules it enforces are here:
 extension, size and parseability, plus the required-column check that lives in
@@ -14,7 +14,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from cleaning import read_tabular
 from dtos import UploadStatusResponse
 from uploaded_dataset import (
     DatasetError,
@@ -26,8 +25,10 @@ from uploaded_dataset import (
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 
-#: Uploads are read fully into memory, so cap them. The institute's own file is ~200 KB.
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+#: Upload cap. Kept under Vercel's ~4.5 MB request-body limit, which would otherwise
+#: reject the request before it ever reached this handler. The institute's own file is
+#: ~200 KB, so this is roomy.
+MAX_UPLOAD_BYTES = 4 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".csv", ".tsv", ".txt"}
 
 
@@ -61,11 +62,8 @@ async def upload_dataset(
         )
 
     try:
-        raw = read_tabular(content, filename)
-        dataset = set_uploaded(raw, filename)
+        dataset = set_uploaded(content, filename)
     except DatasetError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except ValueError as exc:  # unreadable / empty file from ``read_tabular``
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return _to_status(dataset)

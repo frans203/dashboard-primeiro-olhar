@@ -12,11 +12,16 @@ Run locally:  uvicorn main:app --reload --port 8000
 import os
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from cleaning import get_clean_df
-from routes import all_routers
+# Local convenience: read backend/.env when present. On a host the real environment
+# already carries the variables and nothing is overwritten.
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
+from cleaning import get_clean_df  # noqa: E402 - after load_dotenv, on purpose
+from routes import all_routers  # noqa: E402
 
 
 @asynccontextmanager
@@ -24,6 +29,9 @@ async def lifespan(app: FastAPI):
     # Load + clean the dataset once at startup so the first request is fast.
     get_clean_df()
     yield
+
+
+
 
 
 app = FastAPI(

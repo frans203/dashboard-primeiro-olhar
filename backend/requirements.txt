@@ -3,5 +3,8 @@ uvicorn[standard]==0.34.0
 pandas==2.2.3
 pydantic==2.10.4
 python-multipart==0.0.20
+python-dotenv==1.0.1
+# Official Vercel SDK — used only for the private Blob store (see blob_storage.py).
+vercel==0.7.2
 pytest==8.3.4
 httpx==0.28.1
