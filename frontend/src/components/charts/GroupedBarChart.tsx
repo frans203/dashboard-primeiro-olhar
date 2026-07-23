@@ -10,6 +10,11 @@ import {
 } from "recharts";
 
 import { chartColor } from "@/lib/chart-colors";
+import {
+  TOOLTIP_ITEM_STYLE,
+  legendTextFormatter,
+  tooltipValueFormatter,
+} from "./readable-text";
 
 /**
  * Generic GROUPED / STACKED bar chart. Each `series` is one bar per category.
@@ -57,8 +62,14 @@ export function GroupedBarChart<T extends Record<string, unknown>>({
           height={72}
         />
         <YAxis allowDecimals={false} tick={{ fontSize: 12 }} width={32} />
-        <Tooltip cursor={{ fill: "hsl(var(--muted))" }} />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
+        {/* Lettering in the darkened text palette, marks in the bright one — the yellow
+            series is illegible as text on the white card. See `readable-text`. */}
+        <Tooltip
+          cursor={{ fill: "hsl(var(--muted))" }}
+          itemStyle={TOOLTIP_ITEM_STYLE}
+          formatter={tooltipValueFormatter}
+        />
+        <Legend wrapperStyle={{ fontSize: 12 }} formatter={legendTextFormatter} />
         {series.map((s, i) => (
           <Bar
             key={s.dataKey}

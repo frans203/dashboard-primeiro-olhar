@@ -10,6 +10,7 @@ import {
 } from "recharts";
 
 import { chartColor } from "@/lib/chart-colors";
+import { TOOLTIP_ITEM_STYLE, tooltipValueFormatter } from "./readable-text";
 import type { LabelCount } from "@/api/schemas";
 
 /**
@@ -42,7 +43,13 @@ export function HorizontalBarChart({
           tick={{ fontSize: 12 }}
           interval={0}
         />
-        <Tooltip cursor={{ fill: "hsl(var(--muted))" }} />
+        {/* Tooltip lettering goes through the readable text palette, like every other
+            chart here — a bar's own hue is a mark color, not a text color. */}
+        <Tooltip
+          cursor={{ fill: "hsl(var(--muted))" }}
+          itemStyle={TOOLTIP_ITEM_STYLE}
+          formatter={tooltipValueFormatter}
+        />
         {/* `name` labels the series in the tooltip (else Recharts shows "count"). */}
         <Bar dataKey="count" name="Contagem" radius={[0, 6, 6, 0]}>
           {data.map((_, i) => (
